@@ -65,7 +65,7 @@ API keys live only in the server environment. Only the selected snippets are sen
 React + Vite UI ──JSON──► Go (net/http) ── cobol/  fixed-format normalizer · COPY expansion · parser
                                         ── SQLite + FTS5  symbols · refs · edges · source lines
                                         ── ask     retrieve paragraphs → LLM → validate citations
-                                        ── llm/    OpenAI | Anthropic | Gemini over plain HTTP
+                                        ── llm/    OpenAI | Anthropic | Gemini | OpenRouter over plain HTTP
 One static binary serves the API and the embedded UI → one distroless Docker image.
 ```
 
