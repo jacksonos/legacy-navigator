@@ -173,6 +173,22 @@ function SearchPanel({ projectId, open, fail, showMap }: {
   )
 }
 
+function Limits() {
+  const t = useT()
+  const ref = useRef<HTMLDialogElement>(null)
+  // showModal() traps focus, closes on Esc and returns focus to the opener.
+  return (
+    <>
+      <button type="button" className="btn" onClick={() => ref.current?.showModal()}>{t('limitations')}</button>
+      <dialog ref={ref} aria-labelledby="h-limits" className="limits">
+        <h2 id="h-limits">{t('limitsTitle')}</h2>
+        <ul>{[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <li key={n}>{t('limit.' + n)}</li>)}</ul>
+        <button type="button" className="btn" autoFocus onClick={() => ref.current?.close()}>{t('close')}</button>
+      </dialog>
+    </>
+  )
+}
+
 function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const t = useT()
   const [project, setProject] = useState<Project | null>(null)
@@ -248,6 +264,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
     <>
       <header>
         <h1>{t('title')}</h1>
+        <Limits />
         <label className="lang">
           {t('language')}
           <select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>
