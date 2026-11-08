@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/jacksonos/legacy-navigator/server/cobol"
+	"github.com/jacksonos/legacy-navigator/server/llm"
 )
 
 //go:embed samples
@@ -25,7 +26,10 @@ const (
 	maxHits  = 50
 )
 
-type api struct{ db *sql.DB }
+type api struct {
+	db        *sql.DB
+	providers []llm.Provider
+}
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -47,6 +51,8 @@ func (a *api) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}/files/{name}", a.file)
 	mux.HandleFunc("GET /api/projects/{id}/search", a.search)
 	mux.HandleFunc("GET /api/projects/{id}/graph", a.graph)
+	mux.HandleFunc("POST /api/projects/{id}/ask", a.ask)
+	mux.HandleFunc("GET /api/providers", a.listProviders)
 }
 
 func validExt(name string) bool {
@@ -193,6 +199,18 @@ type LineHit struct {
 
 var ftsWord = regexp.MustCompile(`[A-Za-z0-9]+`)
 
+const ftsSQL = `SELECT file, line, text FROM lines_fts
+	WHERE lines_fts MATCH ? AND project=? ORDER BY file, CAST(line AS INTEGER) LIMIT ?`
+
+// ftsQuery turns words into an FTS5 prefix query matching any of them.
+func ftsQuery(words []string) string {
+	q := make([]string, len(words))
+	for i, w := range words {
+		q[i] = `"` + w + `"*`
+	}
+	return strings.Join(q, " OR ")
+}
+
 func (a *api) search(w http.ResponseWriter, r *http.Request) {
 	id, q, kind := r.PathValue("id"), r.URL.Query().Get("q"), r.URL.Query().Get("kind")
 	if !projectExists(a.db, id) {
@@ -248,12 +266,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		rr.Close()
 	}
 
-	for i, word := range words {
-		words[i] = `"` + word + `"*`
-	}
-	lr, err := a.db.Query(`SELECT file, line, text FROM lines_fts
-		WHERE lines_fts MATCH ? AND project=? ORDER BY file, CAST(line AS INTEGER) LIMIT ?`,
-		strings.Join(words, " OR "), id, maxHits)
+	lr, err := a.db.Query(ftsSQL, ftsQuery(words), id, maxHits)
 	if err != nil {
 		serverError(w, err)
 		return

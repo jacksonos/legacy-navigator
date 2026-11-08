@@ -18,7 +18,7 @@ func testHandler(t *testing.T) http.Handler {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { db.Close() })
-	return newHandler(fstest.MapFS{}, db)
+	return newHandler(fstest.MapFS{}, db, nil)
 }
 
 func do(t *testing.T, h http.Handler, method, path, ctype string, body []byte, out any) int {
