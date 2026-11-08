@@ -3,14 +3,13 @@
 ## Estructura del repositorio
 
 ```
-server/      módulo Go: main.go (HTTP + almacén + ask), cobol/, llm/
+server/      módulo Go: main.go, api.go, store.go, cobol/, llm/, samples/ (embebidos)
 web/         React + TS + Vite
-samples/     fuentes COBOL de ejemplo
 docs/        estos documentos
 Dockerfile   docker-compose.yml   .env.example
 ```
 
-## Archivos de ejemplo (`samples/`)
+## Archivos de ejemplo (`server/samples/`)
 
 Escritos a medida, con nombres y comentarios en español:
 

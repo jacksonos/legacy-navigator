@@ -40,6 +40,25 @@
 
 Las claves de los LLM solo viven en el servidor, en variables de entorno. El navegador nunca las envía.
 
+### Contratos JSON (H2)
+
+```ts
+type Warning = { kind: string; detail: string; file: string; line: number }   // file/line pueden ir vacíos/0
+type FileSummary = { name: string; lines: number; programId: string; paragraphs: number; dataItems: number; warnings: Warning[] }
+type Project = { id: string; files: FileSummary[]; warnings: Warning[] }      // warnings = nivel proyecto
+
+// POST /api/projects (multipart, campo "files" repetido) | POST /api/projects?samples=1   → 201 Project
+// GET  /api/projects/{id}                                                                → 200 Project
+// GET  /api/projects/{id}/files/{name}      → 200 { name: string; lines: string[] }      // líneas crudas, índice 0 = línea 1
+// GET  /api/projects/{id}/search?q=&kind=   kind ∈ data|paragraph|section|file|program (opcional)
+type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string }
+type SymbolHit = { name: string; kind: string; def: { file: string; line: number }; refs: Ref[] }
+type LineHit = { file: string; line: number; text: string }                    // aciertos FTS5 sobre las líneas
+// → 200 { results: SymbolHit[]; lines: LineHit[] }   (máx. 50 de cada)
+
+// Errores: { error: string } con 400 / 404 / 413
+```
+
 ## Módulos del servidor
 
 1. **`cobol/`** (paquete puro, sin E/S; es el núcleo que se prueba):
