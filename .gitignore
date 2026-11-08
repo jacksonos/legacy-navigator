@@ -1,0 +1,10 @@
+node_modules/
+web/dist/
+server/static/*
+!server/static/.gitkeep
+data/
+.env
+*.exe
+*.test
+*.out
+legacy-navigator
