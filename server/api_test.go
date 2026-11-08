@@ -190,10 +190,10 @@ func TestNotFoundAndFile(t *testing.T) {
 	}
 }
 
-func getGraph(t *testing.T, h http.Handler, id string) Graph {
+func getGraph(t *testing.T, h http.Handler, id, query string) Graph {
 	t.Helper()
 	var g Graph
-	if code := do(t, h, "GET", "/api/projects/"+id+"/graph", "", nil, &g); code != 200 {
+	if code := do(t, h, "GET", "/api/projects/"+id+"/graph"+query, "", nil, &g); code != 200 {
 		t.Fatalf("graph: %d", code)
 	}
 	return g
@@ -219,7 +219,18 @@ func (g Graph) edge(from, to, kind string) bool {
 
 func TestGraph(t *testing.T) {
 	h := testHandler(t)
-	g := getGraph(t, h, samplesProject(t, h).ID)
+	pid := samplesProject(t, h).ID
+	sys := getGraph(t, h, pid, "")
+	if sys.View != "system" || sys.Program != "" || len(sys.Programs) != 2 || sys.Programs[0] != "CALCSALD" || sys.Programs[1] != "VALIDAR" {
+		t.Fatalf("default view: %+v", sys)
+	}
+	if n := sys.node("CALCSALD:2000-EXIT"); n != nil || !sys.edge("CALCSALD", "VALIDAR", "call") {
+		t.Fatalf("system view: %+v", sys)
+	}
+	g := getGraph(t, h, pid, "?view=program&program=CALCSALD")
+	if g.View != "program" || g.Program != "CALCSALD" {
+		t.Fatalf("program view: %+v", g)
+	}
 	if n := g.node("CALCSALD:2000-EXIT"); n == nil || n.Kind != "paragraph" || n.File != "CALCSALD.cbl" || n.Line != 64 {
 		t.Fatalf("2000-EXIT node: %+v", n)
 	}
@@ -258,6 +269,17 @@ func TestGraph(t *testing.T) {
 	if code := do(t, h, "GET", "/api/projects/nope/graph", "", nil, nil); code != 404 {
 		t.Fatalf("unknown project: %d", code)
 	}
+
+	f := getGraph(t, h, pid, "?view=focus&node=CALCSALD:4000-CALCULAR-SALDO")
+	if f.View != "focus" || f.Depth != 1 || f.Program != "CALCSALD" || f.node("CALCSALD:4000-CALCULAR-SALDO") == nil || f.node("CALCSALD:3000-PROCESAR") == nil {
+		t.Fatalf("focus view: %+v", f)
+	}
+	for _, q := range []string{"?view=bad", "?view=program&program=NOPE", "?view=program", "?view=focus&node=NOPE", "?view=focus", "?view=focus&node=VALIDAR&depth=4", "?view=focus&node=VALIDAR&depth=x", "?depth=0"} {
+		var e map[string]string
+		if code := do(t, h, "GET", "/api/projects/"+pid+"/graph"+q, "", nil, &e); code != 400 || e["error"] == "" {
+			t.Fatalf("%s: %d %v", q, code, e)
+		}
+	}
 }
 
 func TestGraphExternalCall(t *testing.T) {
@@ -271,7 +293,7 @@ func TestGraphExternalCall(t *testing.T) {
 		files[n] = string(b)
 	}
 	_, p := upload(t, h, files)
-	g := getGraph(t, h, p.ID)
+	g := getGraph(t, h, p.ID, "")
 	if n := g.node("ext:VALIDAR"); n == nil || n.Kind != "external" || n.Resolved || !g.edge("CALCSALD:3000-PROCESAR", "ext:VALIDAR", "call") {
 		t.Fatalf("ext:VALIDAR: %+v", n)
 	}
