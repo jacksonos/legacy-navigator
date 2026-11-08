@@ -1,6 +1,6 @@
 import { Fragment, useState, type ReactNode } from 'react'
 import { ask, type AskResponse, type Provider } from './api'
-import { useT } from './i18n'
+import { useCount, useT } from './i18n'
 import type { Lang } from './i18n'
 
 type Open = (file: string, line?: number) => void
@@ -36,6 +36,7 @@ export default function AskPanel({ projectId, lang, providers, open, fail, showM
   projectId: string | null; lang: Lang; providers: Provider[]; open: Open; fail: (e: unknown) => void; showMap: (l: string) => void
 }) {
   const t = useT()
+  const count = useCount()
   const [q, setQ] = useState('')
   const [prov, setProv] = useState('')
   const [busy, setBusy] = useState(false)
@@ -92,7 +93,7 @@ export default function AskPanel({ projectId, lang, providers, open, fail, showM
             ) : <h3>{res.evidence.length ? t('evidenceOnly') : t('notFound')}</h3>}
             {res.unverified?.length > 0 && (
               <div className="warn-box" role="alert">
-                {res.unverified.length} {t('unverifiedWarn')}: <code>{res.unverified.join(', ')}</code>
+                {count('unverifiedWarn', res.unverified.length)}: <code>{res.unverified.join(', ')}</code>
               </div>
             )}
             {res.evidence.length > 0 && (
