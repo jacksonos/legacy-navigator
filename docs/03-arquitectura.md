@@ -75,6 +75,33 @@ type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons
 // partial = hay algún aviso missing_copy | dynamic_call | unresolved_call | alter | goto_depending; reasons = esos avisos
 ```
 
+#### Vistas del grafo (escalabilidad)
+
+El grafo completo de un sistema real (cientos de programas, miles de párrafos) no se puede leer ni dibujar.
+El servidor devuelve siempre una **vista** acotada:
+
+```ts
+// GET /api/projects/{id}/graph?view=system|program|focus&program=PROG&node=ID&depth=1..3
+type Graph = {
+  view: "system" | "program" | "focus"   // la vista realmente servida (puede diferir de la pedida)
+  program: string                        // programa de la vista program/focus ("" en system)
+  node: string                           // nodo central en focus ("" en otras)
+  depth: number                          // profundidad servida en focus (0 en otras)
+  programs: string[]                     // todos los PROGRAM-ID cargados, para el selector
+  nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[]
+}
+```
+
+- **system**: un nodo por programa + `ext:`/`dyn:`; aristas `call` agregadas programa → destino. Vista por
+  defecto con más de un programa; con uno solo se sirve `program`.
+- **program**: secciones/párrafos de `program` + destinos de sus CALL (programa, `ext:` o `dyn:`).
+- **focus**: vecinos a `depth` saltos (sin dirección) de `node` sobre perform/goto/call.
+- **Tope** `maxGraphEdges = 300`: si `program` lo supera se sirve `focus` sobre su primer párrafo con
+  depth 2; si `focus` lo supera se reduce `depth`, y con depth 1 se recortan aristas. Todo recorte añade a
+  `reasons` un aviso `{kind:"too_large", detail:"<mostradas>/<total>"}` y pone `partial: true`.
+- `reasons` en program/focus solo incluye los avisos de ese programa; en system, todos.
+- Parámetros inválidos (vista, programa o nodo inexistente, depth fuera de 1..3) → 400.
+
 ### Contrato de preguntas (H4)
 
 ```ts
