@@ -68,7 +68,8 @@ function loadMermaid() {
 export default function GraphView({ graph, onNode, onQuery }: { graph: Graph; onNode: (n: GraphNode) => void; onQuery: (q: GraphQuery) => void }) {
   const t = useT()
   const box = useRef<HTMLDivElement>(null)
-  const [fit, setFit] = useState(true)
+  const [fitPref, setFit] = useState<boolean | null>(null)
+  const fit = fitPref ?? graph.nodes.length <= 60 // big maps shrink to nothing when fitted: default them to 100%
   const fitRef = useRef(fit)
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading')
   const [picked, setPicked] = useState<{ g: Graph; n: GraphNode } | null>(null)
