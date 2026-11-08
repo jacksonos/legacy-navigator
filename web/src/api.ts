@@ -56,3 +56,17 @@ export const search = (id: string, q: string, kind: string, signal?: AbortSignal
     { signal },
   )
 export const getGraph = (id: string) => call<Graph>(`/api/projects/${encodeURIComponent(id)}/graph`)
+
+export type Provider = { id: string; model: string }
+export type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; text: string }
+export type AskResponse = {
+  mode: 'llm' | 'evidence'; provider: string; answer: string
+  citations: { file: string; line: number; endLine: number }[]; unverified: string[]; evidence: Evidence[]
+}
+export const getProviders = () => call<{ providers: Provider[] }>('/api/providers')
+export const ask = (id: string, question: string, lang: string, provider?: string) =>
+  call<AskResponse>(`/api/projects/${encodeURIComponent(id)}/ask`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ question, lang, ...(provider ? { provider } : {}) }),
+  })

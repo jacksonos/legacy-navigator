@@ -75,6 +75,16 @@ input[type=search], select { padding: .3rem .4rem; background: var(--panel); col
 @media (max-width: 900px) {
   main { display: flex; flex-direction: column; height: auto; }
   .panel { overflow: visible; }
+  main .side { overflow: visible; }
   .viewer-panel { overflow: hidden; }
   .viewer, .map-panel { height: 24rem; flex: none; }
 }
+.side { display: flex; flex-direction: column; gap: .75rem; min-width: 0; overflow: auto; }
+.side > .panel { overflow: visible; flex: none; }
+.ask textarea { width: 100%; font: inherit; padding: .3rem .4rem; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; resize: vertical; }
+.ask form { display: flex; flex-direction: column; gap: .4rem; }
+.ask label { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; }
+.answer { white-space: pre-wrap; overflow-wrap: anywhere; margin: .3rem 0; }
+.warn-box { border: 2px solid var(--w); border-radius: 4px; padding: .3rem .5rem; color: var(--w); font-size: .85rem; }
+.evidence summary { cursor: pointer; font-weight: 600; }
+.evidence pre { margin: .2rem 0; padding: .3rem; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; overflow: auto; max-width: 100%; }

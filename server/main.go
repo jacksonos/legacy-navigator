@@ -9,14 +9,16 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/jacksonos/legacy-navigator/server/llm"
 )
 
 //go:embed all:static
 var staticFS embed.FS
 
-func newHandler(static fs.FS, db *sql.DB) http.Handler {
+func newHandler(static fs.FS, db *sql.DB, providers []llm.Provider) http.Handler {
 	mux := http.NewServeMux()
-	(&api{db}).register(mux)
+	(&api{db, providers}).register(mux)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -61,5 +63,5 @@ func main() {
 		addr = ":8080"
 	}
 	log.Printf("listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, newHandler(sub, db)))
+	log.Fatal(http.ListenAndServe(addr, newHandler(sub, db, llm.FromEnv())))
 }

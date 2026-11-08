@@ -15,7 +15,7 @@ func get(h http.Handler, path string) *httptest.ResponseRecorder {
 }
 
 func TestHealth(t *testing.T) {
-	w := get(newHandler(fstest.MapFS{}, nil), "/api/health")
+	w := get(newHandler(fstest.MapFS{}, nil, nil), "/api/health")
 	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != `{"status":"ok"}` {
 		t.Fatalf("got %d %q", w.Code, w.Body.String())
 	}
@@ -25,7 +25,7 @@ func TestSPAFallback(t *testing.T) {
 	h := newHandler(fstest.MapFS{
 		"index.html":    {Data: []byte("<html>app</html>")},
 		"assets/app.js": {Data: []byte("js")},
-	}, nil)
+	}, nil, nil)
 	if w := get(h, "/some/route"); w.Code != 200 || w.Body.String() != "<html>app</html>" {
 		t.Fatalf("fallback: %d %q", w.Code, w.Body.String())
 	}
@@ -38,7 +38,7 @@ func TestSPAFallback(t *testing.T) {
 }
 
 func TestMissingIndex(t *testing.T) {
-	if w := get(newHandler(fstest.MapFS{}, nil), "/"); w.Code != 503 {
+	if w := get(newHandler(fstest.MapFS{}, nil, nil), "/"); w.Code != 503 {
 		t.Fatalf("got %d", w.Code)
 	}
 }

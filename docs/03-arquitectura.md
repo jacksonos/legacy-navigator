@@ -75,6 +75,30 @@ type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons
 // partial = hay algún aviso missing_copy | dynamic_call | unresolved_call | alter | goto_depending; reasons = esos avisos
 ```
 
+### Contrato de preguntas (H4)
+
+```ts
+// GET /api/providers → 200 { providers: { id: "openai" | "anthropic" | "gemini"; model: string }[] }   // solo los configurados
+
+// POST /api/projects/{id}/ask
+type AskRequest = { question: string /* 1..500 caracteres */; lang: "en" | "es"; provider?: string }
+type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; text: string }  // text = líneas crudas unidas con \n
+type Citation = { file: string; line: number; endLine: number }   // endLine = line si es una sola línea
+type AskResponse = {
+  mode: "llm" | "evidence"        // "evidence" = sin proveedor configurado o sin evidencia (no se llama al LLM)
+  provider: string                // "" en modo evidence
+  answer: string                  // texto plano; citas [archivo:línea] o [archivo:inicio-fin], todas verificadas
+  citations: Citation[]           // las citas válidas que quedaron en answer
+  unverified: string[]            // citas eliminadas por inválidas, en crudo
+  evidence: Evidence[]            // fragmentos enviados (o que se enviarían) al LLM; [] = no encontrado
+}
+// Errores { error }: 400 (pregunta vacía/larga, proveedor desconocido o sin configurar), 404, 502 (fallo del proveedor), 504 (timeout 60 s)
+```
+
+Sin `provider` en la petición se usa el primero configurado (orden: anthropic, openai, gemini).
+Un proveedor se activa con su clave **y** su modelo: `ANTHROPIC_MODEL` vale `claude-sonnet-5-5` por defecto;
+`OPENAI_MODEL` y `GEMINI_MODEL` son obligatorios para no fijar en el código nombres de modelo que caducan.
+
 ## Módulos del servidor
 
 1. **`cobol/`** (paquete puro, sin E/S; es el núcleo que se prueba):
