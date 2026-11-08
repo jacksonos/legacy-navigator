@@ -189,3 +189,97 @@ func TestNotFoundAndFile(t *testing.T) {
 		t.Fatalf("unknown file: %d", code)
 	}
 }
+
+func getGraph(t *testing.T, h http.Handler, id string) Graph {
+	t.Helper()
+	var g Graph
+	if code := do(t, h, "GET", "/api/projects/"+id+"/graph", "", nil, &g); code != 200 {
+		t.Fatalf("graph: %d", code)
+	}
+	return g
+}
+
+func (g Graph) node(id string) *GraphNode {
+	for i, n := range g.Nodes {
+		if n.ID == id {
+			return &g.Nodes[i]
+		}
+	}
+	return nil
+}
+
+func (g Graph) edge(from, to, kind string) bool {
+	for _, e := range g.Edges {
+		if e.From == from && e.To == to && e.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+func TestGraph(t *testing.T) {
+	h := testHandler(t)
+	g := getGraph(t, h, samplesProject(t, h).ID)
+	if n := g.node("CALCSALD:2000-EXIT"); n == nil || n.Kind != "paragraph" || n.File != "CALCSALD.cbl" || n.Line != 64 {
+		t.Fatalf("2000-EXIT node: %+v", n)
+	}
+	if n := g.node("VALIDAR"); n == nil || n.Kind != "program" || !n.Resolved {
+		t.Fatalf("VALIDAR node: %+v", n)
+	}
+	for _, e := range [][3]string{
+		{"CALCSALD:0000-PRINCIPAL", "CALCSALD:2000-LEER-MOV", "perform"},
+		{"CALCSALD:0000-PRINCIPAL", "CALCSALD:2000-EXIT", "perform"},
+		{"CALCSALD:2000-LEER-MOV", "CALCSALD:2000-EXIT", "goto"},
+		{"CALCSALD:3000-PROCESAR", "VALIDAR", "call"},
+	} {
+		if !g.edge(e[0], e[1], e[2]) {
+			t.Fatalf("missing edge %v in %+v", e, g.Edges)
+		}
+	}
+	dyn := 0
+	for _, n := range g.Nodes {
+		if n.Kind == "dynamic" {
+			dyn++
+			if n.Resolved || n.Label != "?" || !strings.HasPrefix(n.ID, "dyn:CALCSALD.cbl:") || !g.edge("CALCSALD:3000-PROCESAR", n.ID, "call") {
+				t.Fatalf("dynamic node: %+v", n)
+			}
+		}
+	}
+	if dyn != 1 {
+		t.Fatalf("dynamic nodes: %d", dyn)
+	}
+	kinds := map[string]bool{}
+	for _, r := range g.Reasons {
+		kinds[r.Kind] = true
+	}
+	if !g.Partial || len(g.Reasons) != 2 || !kinds["missing_copy"] || !kinds["dynamic_call"] {
+		t.Fatalf("partial %v reasons %+v", g.Partial, g.Reasons)
+	}
+	if code := do(t, h, "GET", "/api/projects/nope/graph", "", nil, nil); code != 404 {
+		t.Fatalf("unknown project: %d", code)
+	}
+}
+
+func TestGraphExternalCall(t *testing.T) {
+	h := testHandler(t)
+	files := map[string]string{}
+	for _, n := range []string{"CALCSALD.cbl", "CTAREG.cpy", "MOVREG.cpy"} {
+		b, err := samplesFS.ReadFile("samples/" + n)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files[n] = string(b)
+	}
+	_, p := upload(t, h, files)
+	g := getGraph(t, h, p.ID)
+	if n := g.node("ext:VALIDAR"); n == nil || n.Kind != "external" || n.Resolved || !g.edge("CALCSALD:3000-PROCESAR", "ext:VALIDAR", "call") {
+		t.Fatalf("ext:VALIDAR: %+v", n)
+	}
+	found := false
+	for _, r := range g.Reasons {
+		found = found || r.Kind == "unresolved_call"
+	}
+	if !found {
+		t.Fatalf("no unresolved_call in %+v", g.Reasons)
+	}
+}
