@@ -13,10 +13,16 @@ function toMermaid(g: Graph) {
   const def = (n: GraphNode) => `${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind}`
   const progOf = (n: GraphNode) =>
     n.kind === 'program' ? n.id : n.kind === 'section' || n.kind === 'paragraph' ? n.id.split(':')[0] : ''
-  // system view: programs are plain nodes, no subgraphs
-  g.nodes.filter((n) => g.view !== 'system' && n.kind === 'program').forEach((p, i) => {
-    out.push(`subgraph sg${i}["${esc(p.label)}"]`)
-    g.nodes.filter((n) => progOf(n) === p.id).forEach((n) => out.push('  ' + def(n)))
+  // one subgraph per program, derived from the node ids (the program node itself may be absent); system view: none
+  const groups = new Map<string, GraphNode[]>()
+  g.nodes.forEach((n) => {
+    const p = g.view === 'system' ? '' : progOf(n)
+    if (p) groups.set(p, [...(groups.get(p) ?? []), n])
+  })
+  let sg = 0
+  groups.forEach((members, p) => {
+    out.push(`subgraph sg${sg++}["${esc(p)}"]`)
+    members.forEach((n) => out.push('  ' + def(n)))
     out.push('end')
   })
   g.nodes.filter((n) => g.view === 'system' || !progOf(n)).forEach((n) => out.push(def(n)))
@@ -132,6 +138,12 @@ export default function GraphView({ graph, onNode, onQuery }: { graph: Graph; on
           </label>
         )}
       </div>
+      <button type="button" className="btn fit-btn" aria-pressed={!fit} onClick={() => setFit(!fit)}>
+        {t(fit ? 'mapFit' : 'map100')}
+      </button>
+      <div className="map-wrap">
+        <div className={fit ? 'map fit' : 'map'} ref={box} />
+      </div>
       <p className="map-bar" aria-live="polite">
         {sel ? (
           <>
@@ -141,12 +153,6 @@ export default function GraphView({ graph, onNode, onQuery }: { graph: Graph; on
           </>
         ) : <span className="muted">{t('selectHint')}</span>}
       </p>
-      <button type="button" className="btn fit-btn" aria-pressed={!fit} onClick={() => setFit(!fit)}>
-        {t(fit ? 'mapFit' : 'map100')}
-      </button>
-      <div className="map-wrap">
-        <div className={fit ? 'map fit' : 'map'} ref={box} />
-      </div>
     </>
   )
 }
