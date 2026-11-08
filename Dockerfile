@@ -10,9 +10,11 @@ WORKDIR /src
 COPY server/ ./
 COPY --from=web /web/dist/ ./static/
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /navigator .
+RUN mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot
 COPY --from=server /navigator /navigator
+COPY --from=server --chown=65532:65532 /data /data
 ENV DB_PATH=/data/navigator.db
 EXPOSE 8080
 VOLUME /data
