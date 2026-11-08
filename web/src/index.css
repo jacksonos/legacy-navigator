@@ -1,4 +1,64 @@
-body {
-  font-family: system-ui, sans-serif;
-  margin: 2rem;
+:root {
+  --bg: #f6f7f9; --panel: #fff; --fg: #1d2330; --muted: #566074; --border: #d5d9e0;
+  --accent: #0b5cad; --hl: #fff3b0; --code-bg: #fbfbfc; --err: #b3261e;
+  --w: #9a3412; --r: #1d4ed8; --io: #166534;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171d; --panel: #1c2028; --fg: #e4e7ee; --muted: #a0a9ba; --border: #333a47;
+    --accent: #7db7f5; --hl: #5a4a05; --code-bg: #171a21; --err: #ff8a80;
+    --w: #fdba74; --r: #93c5fd; --io: #86efac;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; padding: .6rem 1rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+h1 { font-size: 1.15rem; margin: 0; }
+h2 { font-size: 1rem; margin: 0 0 .6rem; }
+h3 { font-size: .9rem; margin: .8rem 0 .3rem; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr) minmax(0, 1fr); gap: .75rem; padding: .75rem; height: calc(100vh - 6.5rem); min-height: 28rem; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: .8rem; overflow: auto; min-width: 0; }
+.viewer-panel { display: flex; flex-direction: column; overflow: hidden; }
+.status { padding: 0 1rem; min-height: 1.5rem; }
+.status p { margin: .2rem 0; }
+.err { color: var(--err); font-weight: 600; }
+.muted { color: var(--muted); font-size: .85rem; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn, button.link, select, input[type=search] { font: inherit; }
+.btn { display: inline-block; padding: .35rem .8rem; margin: .2rem .3rem .2rem 0; border: 1px solid var(--accent); border-radius: 4px; background: transparent; color: var(--accent); cursor: pointer; }
+.btn:hover:not(:disabled) { background: var(--accent); color: var(--panel); }
+.btn:disabled { opacity: .5; cursor: default; }
+label.btn { position: relative; }
+label.btn input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+label.btn:has(input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.drop { border: 2px dashed var(--border); border-radius: 6px; padding: .8rem; text-align: center; }
+.drop.over { border-color: var(--accent); background: var(--hl); }
+.drop p { margin: .2rem 0; }
+button.link { background: none; border: 0; padding: 0; color: var(--accent); text-decoration: underline; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.name { font-weight: 600; }
+ul { list-style: none; padding: 0; margin: 0; }
+.files li, .hits li { padding: .5rem 0; border-top: 1px solid var(--border); }
+.warnings { font-size: .85rem; color: var(--w); margin-top: .2rem; }
+.row { display: flex; gap: .6rem; flex-wrap: wrap; }
+.row label { display: flex; flex-direction: column; gap: .15rem; font-size: .85rem; flex: 1 1 8rem; }
+input[type=search], select { padding: .3rem .4rem; background: var(--panel); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; }
+.lang { display: flex; align-items: center; gap: .4rem; font-size: .85rem; }
+.tag { font-size: .75rem; padding: 0 .35rem; border: 1px solid var(--border); border-radius: 3px; margin-right: .4rem; }
+.tag.write { color: var(--w); } .tag.read { color: var(--r); } .tag.io { color: var(--io); }
+.refs { display: flex; flex-wrap: wrap; gap: .1rem .6rem; align-items: baseline; font-size: .85rem; }
+.snippet { display: block; font-size: .8rem; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--muted); }
+.viewer { display: flex; flex-direction: column; flex: 1; min-height: 0; border: 1px solid var(--border); border-radius: 4px; background: var(--code-bg); }
+.viewer-name { padding: .25rem .6rem; border-bottom: 1px solid var(--border); font-weight: 600; font-size: .85rem; }
+.code { flex: 1; overflow: auto; font: 13px/1.5 ui-monospace, Consolas, monospace; }
+.line { display: flex; width: max-content; min-width: 100%; }
+.line.hl { background: var(--hl); }
+.no { flex: none; width: 5.5ch; padding-right: 1ch; text-align: right; color: var(--muted); user-select: none; position: sticky; left: 0; background: var(--code-bg); }
+.line.hl .no { background: var(--hl); }
+.tx { white-space: pre; padding-left: 1ch; }
+@media (max-width: 900px) {
+  main { display: flex; flex-direction: column; height: auto; }
+  .panel { overflow: visible; }
+  .viewer-panel { overflow: hidden; }
+  .viewer { height: 24rem; flex: none; }
 }
