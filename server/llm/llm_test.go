@@ -62,6 +62,23 @@ func TestOpenAI(t *testing.T) {
 		t.Fatalf("%q %v", got, body)
 	}
 	fails(t, mk)
+	run(t, mk, "/v1/chat/completions", "X-Title", "", `{"choices":[{"message":{"content":"x"}}]}`) // no X-Title
+}
+
+func TestOpenRouter(t *testing.T) {
+	mk := func(b string) Provider { return NewOpenRouter("KEY", "openai/gpt-4o", b, nil) }
+	reply := `{"choices":[{"message":{"content":"hola"}}]}`
+	run(t, mk, "/v1/chat/completions", "X-Title", "Legacy Code Navigator", reply)
+	got, body := run(t, mk, "/v1/chat/completions", "Authorization", "Bearer KEY", reply)
+	if got != "hola" || body["model"] != "openai/gpt-4o" {
+		t.Fatalf("%q %v", got, body)
+	}
+	fails(t, mk)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "boom", 500) }))
+	defer srv.Close()
+	if _, err := mk(srv.URL).Complete(context.Background(), "s", "u"); err == nil || !strings.HasPrefix(err.Error(), "openrouter:") {
+		t.Fatalf("err = %v", err)
+	}
 }
 
 func TestGemini(t *testing.T) {
@@ -76,7 +93,7 @@ func TestGemini(t *testing.T) {
 }
 
 func TestFromEnv(t *testing.T) {
-	for _, k := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "OPENAI_API_KEY", "OPENAI_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL"} {
+	for _, k := range []string{"ANTHROPIC_API_KEY", "ANTHROPIC_MODEL", "OPENAI_API_KEY", "OPENAI_MODEL", "GEMINI_API_KEY", "GEMINI_MODEL", "OPENROUTER_API_KEY", "OPENROUTER_MODEL"} {
 		t.Setenv(k, "")
 	}
 	if len(FromEnv()) != 0 {
@@ -86,8 +103,10 @@ func TestFromEnv(t *testing.T) {
 	t.Setenv("GEMINI_MODEL", "g")
 	t.Setenv("OPENAI_API_KEY", "k") // no model: skipped
 	t.Setenv("ANTHROPIC_API_KEY", "k")
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	t.Setenv("OPENROUTER_MODEL", "openai/gpt-4o")
 	ps := FromEnv()
-	if len(ps) != 2 || ps[0].ID() != "anthropic" || ps[0].Model() != "claude-sonnet-5-5" || ps[1].ID() != "gemini" {
+	if len(ps) != 3 || ps[0].ID() != "anthropic" || ps[0].Model() != "claude-sonnet-5-5" || ps[1].ID() != "gemini" || ps[2].ID() != "openrouter" {
 		t.Fatalf("%v", ps)
 	}
 }
