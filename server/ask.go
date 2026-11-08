@@ -60,6 +60,7 @@ type cand struct {
 	hits       int
 	write      bool
 	snippet    bool
+	decl       bool
 }
 
 // retrieve picks the code ranges that may answer q: paragraphs with a text hit or a write to a hit symbol,
@@ -202,17 +203,26 @@ func retrieve(db *sql.DB, project, q string, limit int) ([]Evidence, error) {
 		wr.Close()
 	}
 
-	// rank: writers first, then by hits, snippets last; ties by position
+	// rank: writers first, then by hits, then file declarations, snippets last; ties by position
 	var cands []cand
+	hasPara := map[string]bool{}
 	for _, c := range byBlock {
 		cands = append(cands, *c)
+		hasPara[c.file] = true
 	}
+	decls, err := fileDecls(db, project, lines, hasPara)
+	if err != nil {
+		return nil, err
+	}
+	cands = append(cands, decls...)
 	cands = append(cands, snippets...)
 	sort.Slice(cands, func(i, j int) bool {
 		a, b := cands[i], cands[j]
 		switch {
 		case a.snippet != b.snippet:
 			return !a.snippet
+		case a.decl != b.decl:
+			return !a.decl
 		case a.write != b.write:
 			return a.write
 		case a.hits != b.hits:
@@ -260,6 +270,44 @@ func retrieve(db *sql.DB, project, q string, limit int) ([]Evidence, error) {
 		out[i].Text = strings.Join(lines[out[i].File][out[i].StartLine-1:out[i].EndLine], "\n")
 	}
 	return out, nil
+}
+
+// fileDecls returns, for each program file in has, its SELECT sentences (from the stored `file` symbols)
+// and its FD line plus the record line that follows, so the model can tie records to physical files.
+func fileDecls(db *sql.DB, project string, lines map[string][]string, has map[string]bool) ([]cand, error) {
+	rows, err := db.Query(`SELECT file, line FROM symbols WHERE project=? AND kind='file' ORDER BY file, line`, project)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []cand
+	done := map[string]bool{}
+	for rows.Next() {
+		var file string
+		var line int
+		if err := rows.Scan(&file, &line); err != nil {
+			return nil, err
+		}
+		ls := lines[file]
+		if !has[file] || line < 1 || line > len(ls) {
+			continue
+		}
+		end := line
+		// the sentence ends at the first line ending in a period (at most 6 lines)
+		for end < len(ls) && end < line+5 && !strings.HasSuffix(strings.TrimSpace(ls[end-1]), ".") {
+			end++
+		}
+		out = append(out, cand{file: file, name: "FILE-CONTROL", start: line, end: end, decl: true})
+		if !done[file] {
+			done[file] = true
+			for i, l := range ls {
+				if f := strings.Fields(l); len(f) > 1 && f[0] == "FD" && i+2 <= len(ls) {
+					out = append(out, cand{file: file, name: "FILE SECTION", start: i + 1, end: i + 2, decl: true})
+				}
+			}
+		}
+	}
+	return out, rows.Err()
 }
 
 // paraName is the paragraph label of a candidate; data snippets have none.

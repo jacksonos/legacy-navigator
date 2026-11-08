@@ -74,6 +74,14 @@ func TestAskEvidenceModeWithoutProviders(t *testing.T) {
 	if !covers(res.Evidence, "CALCSALD.cbl", 86) || !covers(res.Evidence, "CALCSALD.cbl", 88) || !covers(res.Evidence, "CTAREG.cpy", 5) {
 		t.Fatalf("evidence misses expected ranges: %+v", res.Evidence)
 	}
+	for _, l := range []int{7, 8, 9, 10, 14, 15, 17, 20, 21, 22, 23, 24, 25} {
+		if !covers(res.Evidence, "CALCSALD.cbl", l) {
+			t.Fatalf("declaration line %d missing: %+v", l, res.Evidence)
+		}
+	}
+	for _, e := range res.Evidence {
+		t.Logf("%s %d-%d %s", e.File, e.StartLine, e.EndLine, e.Paragraph)
+	}
 	var par bool
 	for _, e := range res.Evidence {
 		par = par || (e.Paragraph == "4000-CALCULAR-SALDO" && e.File == "CALCSALD.cbl" && strings.Contains(e.Text, "COMPUTE CTA-SALDO"))
@@ -89,7 +97,7 @@ func TestAskEvidenceModeWithoutProviders(t *testing.T) {
 }
 
 func TestAskWithProviderValidatesCitations(t *testing.T) {
-	fp := &fakeProvider{text: "El saldo se calcula [CALCSALD.cbl:86], no en [CALCSALD.cbl:5] ni en [NOPE.cbl:1]."}
+	fp := &fakeProvider{text: "El saldo se calcula [CALCSALD.cbl:86] y [CALCSALD.cbl:7], no en [CALCSALD.cbl:5] ni en [NOPE.cbl:1]."}
 	h, id := askHandler(t, fp)
 	var res askResponse
 	if code := postAsk(t, h, id, canonical, &res); code != 200 {
@@ -98,10 +106,10 @@ func TestAskWithProviderValidatesCitations(t *testing.T) {
 	if res.Mode != "llm" || res.Provider != "openai" {
 		t.Fatalf("%+v", res)
 	}
-	if res.Answer != "El saldo se calcula [CALCSALD.cbl:86], no en ni en." {
+	if res.Answer != "El saldo se calcula [CALCSALD.cbl:86] y [CALCSALD.cbl:7], no en ni en." {
 		t.Fatalf("answer %q", res.Answer)
 	}
-	if len(res.Citations) != 1 || res.Citations[0] != (Citation{"CALCSALD.cbl", 86, 86}) {
+	if len(res.Citations) != 2 || res.Citations[0] != (Citation{"CALCSALD.cbl", 86, 86}) || res.Citations[1] != (Citation{"CALCSALD.cbl", 7, 7}) {
 		t.Fatalf("citations %+v", res.Citations)
 	}
 	if len(res.Unverified) != 2 || res.Unverified[0] != "CALCSALD.cbl:5" || res.Unverified[1] != "NOPE.cbl:1" {
