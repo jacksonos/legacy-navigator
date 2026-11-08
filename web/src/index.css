@@ -56,9 +56,21 @@ input[type=search], select { padding: .3rem .4rem; background: var(--panel); col
 .no { flex: none; width: 5.5ch; padding-right: 1ch; text-align: right; color: var(--muted); user-select: none; position: sticky; left: 0; background: var(--code-bg); }
 .line.hl .no { background: var(--hl); }
 .tx { white-space: pre; padding-left: 1ch; }
+.tabs { display: flex; gap: .3rem; margin-bottom: .5rem; }
+.tab { font: inherit; padding: .25rem .8rem; border: 1px solid var(--border); border-radius: 4px; background: transparent; color: var(--fg); cursor: pointer; }
+.tab.on { background: var(--accent); color: var(--panel); border-color: var(--accent); }
+.map-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.map-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--code-bg); }
+.map { width: max-content; min-width: 100%; }
+.map svg { display: block; }
+.banner { border: 2px solid var(--w); border-radius: 4px; padding: .4rem .6rem; margin-bottom: .4rem; max-height: 9rem; overflow: auto; }
+.banner > strong { color: var(--w); text-transform: uppercase; letter-spacing: .03em; }
+.legend { margin: 0 0 .4rem; }
+.legend span { margin-right: .6rem; white-space: nowrap; }
+.map-btn { margin-left: .4rem; font-size: .8rem; }
 @media (max-width: 900px) {
   main { display: flex; flex-direction: column; height: auto; }
   .panel { overflow: visible; }
   .viewer-panel { overflow: hidden; }
-  .viewer { height: 24rem; flex: none; }
+  .viewer, .map-panel { height: 24rem; flex: none; }
 }

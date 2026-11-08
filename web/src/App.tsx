@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ApiError, getFile, getProject, loadSamples, search, uploadFiles,
-  type Project, type Ref, type SearchResult, type Warning,
+  ApiError, getFile, getGraph, getProject, loadSamples, search, uploadFiles,
+  type Graph, type GraphNode, type Project, type Ref, type SearchResult, type Warning,
 } from './api'
 import CodeViewer from './CodeViewer'
-import { I18nContext, detectLang, useT, type Lang } from './i18n'
+import GraphView, { Legend } from './GraphView'
+import { I18nContext, detectLang, useCount, useT, type Lang } from './i18n'
 
 const KINDS = ['', 'data', 'paragraph', 'section', 'file', 'program']
 const REF_KINDS = ['write', 'read', 'io'] as const
 type Open = (file: string, line?: number) => void
 
-function Warnings({ list }: { list: Warning[] }) {
+function Warnings({ list, open }: { list: Warning[]; open?: Open }) {
   const t = useT()
   if (!list.length) return null
   return (
@@ -19,7 +20,9 @@ function Warnings({ list }: { list: Warning[] }) {
         <li key={i}>
           <strong>{t('warn.' + w.kind)}</strong>
           {w.detail && <> — {w.detail}</>}
-          {w.file && <> ({w.file}{w.line ? `:${w.line}` : ''})</>}
+          {w.file && (open
+            ? <> (<button type="button" className="link" onClick={() => open(w.file, w.line || undefined)}>{w.file}{w.line ? `:${w.line}` : ''}</button>)</>
+            : <> ({w.file}{w.line ? `:${w.line}` : ''})</>)}
         </li>
       ))}
     </ul>
@@ -34,6 +37,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
   open: Open
 }) {
   const t = useT()
+  const count = useCount()
   const [over, setOver] = useState(false)
   return (
     <section className="panel" aria-labelledby="h-files">
@@ -68,7 +72,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
               <li key={f.name}>
                 <button type="button" className="link name" onClick={() => open(f.name)}>{f.name}</button>
                 <div className="muted">
-                  {t('programId')}: {f.programId || '—'} · {f.lines} {t('lines')} · {f.paragraphs} {t('paragraphs')} · {f.dataItems} {t('dataItems')}
+                  {t('programId')}: {f.programId || '—'} · {count('lines', f.lines)} · {count('paragraphs', f.paragraphs)} · {count('dataItems', f.dataItems)}
                 </div>
                 <Warnings list={f.warnings} />
               </li>
@@ -82,7 +86,9 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
   )
 }
 
-function SearchPanel({ projectId, open, fail }: { projectId: string | null; open: Open; fail: (e: unknown) => void }) {
+function SearchPanel({ projectId, open, fail, showMap }: {
+  projectId: string | null; open: Open; fail: (e: unknown) => void; showMap: (label: string) => void
+}) {
   const t = useT()
   const [q, setQ] = useState('')
   const [kind, setKind] = useState('')
@@ -99,13 +105,16 @@ function SearchPanel({ projectId, open, fail }: { projectId: string | null; open
     return () => { clearTimeout(h); ctl.abort() }
   }, [projectId, q, kind, fail])
 
+  const mapBtn = (label: string) => (
+    <button type="button" className="link map-btn" onClick={() => showMap(label)}>{t('showInMap')}</button>
+  )
   const link = (file: string, line: number, extra = '') => (
     <button type="button" className="link" onClick={() => open(file, line)}>
       {file}:{line}{extra && ` (${extra})`}
     </button>
   )
   const results = res?.results ?? []
-  const lines = res?.lines ?? []
+  const lines = kind ? [] : res?.lines ?? [] // text hits have no kind
 
   return (
     <section className="panel" aria-labelledby="h-search">
@@ -130,14 +139,14 @@ function SearchPanel({ projectId, open, fail }: { projectId: string | null; open
             <ul className="hits">
               {results.map((s, i) => (
                 <li key={i}>
-                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span></div>
+                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span>{(s.kind === 'paragraph' || s.kind === 'section') && mapBtn(s.name)}</div>
                   <div>{t('definedAt')} {link(s.def.file, s.def.line)}</div>
                   {REF_KINDS.map((rk) => {
                     const rs: Ref[] = (s.refs ?? []).filter((r) => r.kind === rk)
                     return rs.length > 0 && (
                       <div key={rk} className="refs">
                         <span className={'tag ' + rk}>{t('ref.' + rk)}</span>
-                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}</span>)}
+                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph)}</>}</span>)}
                       </div>
                     )
                   })}
@@ -171,6 +180,9 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const [gone, setGone] = useState(false)
   const [view, setView] = useState<{ file: string; lines: string[]; highlight?: number } | null>(null)
   const viewReq = useRef(0)
+  const [tab, setTab] = useState<'code' | 'map'>('code')
+  const [loaded, setGraph] = useState<{ pid: string; g: Graph } | null>(null)
+  const [focus, setFocus] = useState<string | null>(null)
 
   const fail = useCallback((e: unknown) => {
     setError(e instanceof ApiError ? { status: e.status, msg: e.message } : { status: -1, msg: '' })
@@ -189,7 +201,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
     setBusy(true); setError(null); setGone(false)
     try {
       const pr = await p
-      setProject(pr); setView(null); setPid(pr.id)
+      setProject(pr); setView(null); setPid(pr.id); setFocus(null)
     } catch (e) {
       fail(e)
     } finally {
@@ -208,13 +220,23 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       .finally(() => setBusy(false))
   }, [fail])
 
+  const pid = project?.id
+  useEffect(() => {
+    if (pid) getGraph(pid).then((g) => setGraph({ pid, g })).catch(fail)
+  }, [pid, fail])
+  const graph = loaded && loaded.pid === pid ? loaded.g : null
+
   const open: Open = useCallback((file, line) => {
     if (!project) return
+    setTab('code')
     const req = ++viewReq.current
     getFile(project.id, file)
       .then((f) => { if (req === viewReq.current) setView({ file, lines: f.lines, highlight: line }) })
       .catch(fail)
   }, [project, fail])
+
+  const showMap = (label: string) => { setFocus(label); setTab('map') }
+  const onNode = (n: GraphNode) => { if (n.file) open(n.file, n.line || undefined) }
 
   return (
     <>
@@ -240,9 +262,31 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
         />
         <section className="panel viewer-panel" aria-labelledby="h-viewer">
           <h2 id="h-viewer">{t('viewer')}</h2>
-          {view ? <CodeViewer {...view} /> : <p className="muted">{t('noFile')}</p>}
+          <div className="tabs" role="tablist">
+            {(['code', 'map'] as const).map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'tab on' : 'tab'}
+                onClick={() => { if (k === 'map') setFocus(null); setTab(k) }}>
+                {t(k === 'code' ? 'tabCode' : 'tabMap')}
+              </button>
+            ))}
+          </div>
+          {tab === 'code' && (view ? <CodeViewer {...view} /> : <p className="muted">{t('noFile')}</p>)}
+          {tab === 'map' && (graph ? (
+            <div className="map-panel">
+              {graph.partial && (
+                <div className="banner" role="status">
+                  <strong>{t('partialMap')}</strong> {t('partialWhy')}
+                  <Warnings list={graph.reasons} open={open} />
+                </div>
+              )}
+              <Legend />
+              <div className="map-wrap">
+                <GraphView graph={graph} focus={focus} onNode={onNode} />
+              </div>
+            </div>
+          ) : <p className="muted">{project ? t('loading') : t('noProject')}</p>)}
         </section>
-        <SearchPanel projectId={project?.id ?? null} open={open} fail={fail} />
+        <SearchPanel projectId={project?.id ?? null} open={open} fail={fail} showMap={showMap} />
       </main>
     </>
   )
