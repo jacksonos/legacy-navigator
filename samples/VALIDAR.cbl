@@ -1,0 +1,17 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. VALIDAR.
+      * VALIDA QUE EL IMPORTE DE UN MOVIMIENTO SEA POSITIVO
+       DATA DIVISION.
+       LINKAGE SECTION.
+       01  LK-IMPORTE              PIC S9(9)V99.
+       01  LK-RESULTADO            PIC X.
+           88  LK-VALIDO           VALUE 'S'.
+           88  LK-INVALIDO         VALUE 'N'.
+       PROCEDURE DIVISION USING LK-IMPORTE LK-RESULTADO.
+       0000-INICIO.
+           IF LK-IMPORTE > 0
+               SET LK-VALIDO TO TRUE
+           ELSE
+               SET LK-INVALIDO TO TRUE
+           END-IF
+           GOBACK.
