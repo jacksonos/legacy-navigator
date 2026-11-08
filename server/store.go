@@ -2,10 +2,12 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/jacksonos/legacy-navigator/server/cobol"
 	_ "modernc.org/sqlite"
@@ -223,4 +225,32 @@ func loadProject(db *sql.DB, id string) (Project, error) {
 		}
 	}
 	return out, rows.Err()
+}
+
+// deleteExpired removes projects older than ttl with all their rows; ttl <= 0 disables expiry.
+// Returns the number of projects removed.
+func deleteExpired(db *sql.DB, ttl time.Duration) (int, error) {
+	if ttl <= 0 {
+		return 0, nil
+	}
+	tx, err := db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+	cutoff := fmt.Sprintf("-%d seconds", int64(ttl.Seconds()))
+	expired := `(SELECT id FROM projects WHERE created_at < datetime('now', ?))`
+	var n int
+	for _, t := range []string{"files", "symbols", "refs", "edges", "warnings", "lines_fts"} {
+		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE project IN `+expired, cutoff); err != nil {
+			return 0, err
+		}
+	}
+	res, err := tx.Exec(`DELETE FROM projects WHERE created_at < datetime('now', ?)`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	c, _ := res.RowsAffected()
+	n = int(c)
+	return n, tx.Commit()
 }

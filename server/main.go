@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/jacksonos/legacy-navigator/server/llm"
 )
@@ -61,6 +62,27 @@ func main() {
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		addr = ":8080"
+	}
+	ttl := 168 * time.Hour
+	if v := os.Getenv("PROJECT_TTL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+			ttl = d
+		} else {
+			log.Printf("invalid PROJECT_TTL %q, using %s", v, ttl)
+		}
+	}
+	if ttl > 0 {
+		go func() {
+			tick := time.NewTicker(time.Hour)
+			for {
+				if n, err := deleteExpired(db, ttl); err != nil {
+					log.Printf("expiry: %v", err)
+				} else if n > 0 {
+					log.Printf("expiry: deleted %d projects", n)
+				}
+				<-tick.C
+			}
+		}()
 	}
 	log.Printf("listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, newHandler(sub, db, llm.FromEnv())))
