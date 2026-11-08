@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  ApiError, getFile, getGraph, getProject, loadSamples, search, uploadFiles,
-  type Graph, type GraphNode, type Project, type Ref, type SearchResult, type Warning,
+  ApiError, getFile, getProviders, getGraph, getProject, loadSamples, search, uploadFiles,
+  type Graph, type GraphNode, type Project, type Provider, type Ref, type SearchResult, type Warning,
 } from './api'
+import AskPanel from './AskPanel'
 import CodeViewer from './CodeViewer'
 import GraphView, { Legend } from './GraphView'
 import { I18nContext, detectLang, useCount, useT, type Lang } from './i18n'
@@ -183,11 +184,12 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const [tab, setTab] = useState<'code' | 'map'>('code')
   const [loaded, setGraph] = useState<{ pid: string; g: Graph } | null>(null)
   const [focus, setFocus] = useState<string | null>(null)
+  const [providers, setProviders] = useState<Provider[]>([])
 
   const fail = useCallback((e: unknown) => {
     setError(e instanceof ApiError ? { status: e.status, msg: e.message } : { status: -1, msg: '' })
   }, [])
-  const known = error && [0, 400, 404, 413].includes(error.status)
+  const known = error && [0, 400, 404, 413, 502, 504].includes(error.status)
   const errText = error && (t(known ? 'err.' + error.status : 'err.other') + (error.msg ? ` (${error.msg})` : ''))
 
   const setPid = (id: string | null) => {
@@ -219,6 +221,10 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       })
       .finally(() => setBusy(false))
   }, [fail])
+
+  useEffect(() => {
+    getProviders().then((r) => setProviders(r.providers ?? [])).catch(() => setProviders([]))
+  }, [])
 
   const pid = project?.id
   useEffect(() => {
@@ -284,7 +290,10 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
             </div>
           ) : <p className="muted">{project ? t('loading') : t('noProject')}</p>)}
         </section>
-        <SearchPanel projectId={project?.id ?? null} open={open} fail={fail} showMap={showMap} />
+        <div className="side">
+          <AskPanel key={project?.id ?? ''} projectId={project?.id ?? null} lang={lang} providers={providers} open={open} fail={fail} showMap={showMap} />
+          <SearchPanel projectId={project?.id ?? null} open={open} fail={fail} showMap={showMap} />
+        </div>
       </main>
     </>
   )
