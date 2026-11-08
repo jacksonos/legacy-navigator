@@ -1,32 +1,25 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Graph, GraphNode } from './api'
+import type { Graph, GraphNode, GraphQuery } from './api'
 import { useT } from './i18n'
 
 const esc = (s: string) => s.replace(/[#"<>&]/g, (c) => `#${c.charCodeAt(0)};`)
 
 /** Builds the Mermaid source; `byMermaidId` maps generated ids (n0, n1…) back to nodes. */
-function toMermaid(g: Graph, focus: string | null) {
+function toMermaid(g: Graph) {
   const ids = new Map<string, string>()
   g.nodes.forEach((n, i) => ids.set(n.id, `n${i}`))
-  const hot = new Set<string>()
-  if (focus) {
-    const seeds = g.nodes.filter((n) => n.label === focus && (n.kind === 'paragraph' || n.kind === 'section')).map((n) => n.id)
-    seeds.forEach((s) => hot.add(s))
-    g.edges.forEach((e) => {
-      if (seeds.includes(e.from)) hot.add(e.to)
-      if (seeds.includes(e.to)) hot.add(e.from)
-    })
-  }
+  const hot = new Set<string>(g.node && ids.has(g.node) ? [g.node] : []) // focus center
   const out = ['flowchart LR']
   const def = (n: GraphNode) => `${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind}`
   const progOf = (n: GraphNode) =>
     n.kind === 'program' ? n.id : n.kind === 'section' || n.kind === 'paragraph' ? n.id.split(':')[0] : ''
-  g.nodes.filter((n) => n.kind === 'program').forEach((p, i) => {
+  // system view: programs are plain nodes, no subgraphs
+  g.nodes.filter((n) => g.view !== 'system' && n.kind === 'program').forEach((p, i) => {
     out.push(`subgraph sg${i}["${esc(p.label)}"]`)
     g.nodes.filter((n) => progOf(n) === p.id).forEach((n) => out.push('  ' + def(n)))
     out.push('end')
   })
-  g.nodes.filter((n) => !progOf(n)).forEach((n) => out.push(def(n)))
+  g.nodes.filter((n) => g.view === 'system' || !progOf(n)).forEach((n) => out.push(def(n)))
   g.edges.forEach((e) => {
     const a = ids.get(e.from), b = ids.get(e.to)
     if (e.kind === 'call' && !e.uncertain) out.push(`${a} ==> ${b}`)
@@ -58,6 +51,7 @@ function loadMermaid() {
       startOnLoad: false,
       securityLevel: 'strict',
       theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',
+      maxEdges: 500, // headroom above the server cap (300)
       flowchart: { useMaxWidth: false },
     })
     return m
@@ -65,19 +59,23 @@ function loadMermaid() {
   return ready
 }
 
-export default function GraphView({ graph, focus, onNode }: { graph: Graph; focus: string | null; onNode: (n: GraphNode) => void }) {
+export default function GraphView({ graph, onNode, onQuery }: { graph: Graph; onNode: (n: GraphNode) => void; onQuery: (q: GraphQuery) => void }) {
   const t = useT()
   const box = useRef<HTMLDivElement>(null)
   const [fit, setFit] = useState(true)
   const fitRef = useRef(fit)
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading')
-  const onNodeRef = useRef(onNode)
-  useEffect(() => { onNodeRef.current = onNode; fitRef.current = fit })
+  const [picked, setPicked] = useState<{ g: Graph; n: GraphNode } | null>(null)
+  const sel = picked?.g === graph ? picked.n : null // selection belongs to the graph it was made on
+  const act = useRef({ onQuery, graph })
+  useEffect(() => { act.current = { onQuery, graph }; fitRef.current = fit })
+  const center = graph.node || sel?.id
+  const progs = graph.programs ?? []
 
   useEffect(() => {
     if (!graph.nodes.length) return
     let live = true
-    const { code, hot, byMermaidId } = toMermaid(graph, focus)
+    const { code, hot, byMermaidId } = toMermaid(graph)
     loadMermaid()
       .then((m) => m.render(`mmd${++seq}`, code))
       .then(({ svg }) => {
@@ -87,30 +85,62 @@ export default function GraphView({ graph, focus, onNode }: { graph: Graph; focu
         box.current.querySelectorAll<SVGGElement>('g.node').forEach((el) => {
           const n = byMermaidId.get(/flowchart-(n\d+)-\d+$/.exec(el.id)?.[1] ?? '')
           if (!n) return
-          if (hot.size) {
-            if (n.label === focus && n.kind !== 'program') first = el // the searched paragraph itself, not just a neighbour
-            else if (hot.has(n.id)) first ??= el
-            else el.classList.add('dim')
+          if (hot.has(n.id)) first = el
+          const pick = () => {
+            if (act.current.graph.view === 'system' && n.kind === 'program') return act.current.onQuery({ view: 'program', program: n.id })
+            box.current?.querySelectorAll('g.node.sel').forEach((x) => x.classList.remove('sel'))
+            el.classList.add('sel')
+            setPicked({ g: act.current.graph, n })
           }
-          const go = () => onNodeRef.current(n)
           el.style.cursor = 'pointer'
           el.setAttribute('tabindex', '0')
           el.setAttribute('role', 'button')
-          el.addEventListener('click', go)
-          el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go() } })
+          el.addEventListener('click', pick)
+          el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick() } })
         })
         if (first && !fitRef.current) (first as SVGGElement).scrollIntoView({ block: 'center', inline: 'center' })
         setState('ok')
       })
       .catch(() => { if (live) setState('error') })
     return () => { live = false }
-  }, [graph, focus])
+  }, [graph])
 
   if (!graph.nodes.length) return <p className="muted">{t('mapEmpty')}</p>
   return (
     <>
       {state === 'loading' && <p className="muted">{t('mapLoading')}</p>}
       {state === 'error' && <p className="err">{t('mapError')}</p>}
+      <div className="map-bar" role="group" aria-label={t('mapView')}>
+        <button type="button" className="btn" aria-pressed={graph.view === 'system'} onClick={() => onQuery({ view: 'system' })}>{t('viewSystem')}</button>
+        <button type="button" className="btn" aria-pressed={graph.view === 'program'} disabled={!progs.length}
+          onClick={() => onQuery({ view: 'program', program: graph.program || progs[0] })}>{t('viewProgram')}</button>
+        <button type="button" className="btn" aria-pressed={graph.view === 'focus'} disabled={!center}
+          onClick={() => onQuery({ view: 'focus', node: center, depth: graph.depth || 1 })}>{t('viewFocus')}</button>
+        <label>
+          {t('mapProgram')}
+          <select value={graph.program} onChange={(e) => onQuery({ view: 'program', program: e.target.value })}>
+            {!graph.program && <option value="" />}
+            {progs.map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+        </label>
+        {graph.view === 'focus' && (
+          <label>
+            {t('mapDepth')}
+            <select value={graph.depth} onChange={(e) => onQuery({ view: 'focus', node: graph.node, depth: Number(e.target.value) })}>
+              {[1, 2, 3].map((d) => <option key={d} value={d}>{d}</option>)}
+            </select>
+          </label>
+        )}
+      </div>
+      <p className="map-bar" aria-live="polite">
+        {sel ? (
+          <>
+            <span>{t('selected')}: <strong>{sel.label}</strong></span>
+            {sel.file && <button type="button" className="btn" onClick={() => onNode(sel)}>{t('openCode')}</button>}
+            <button type="button" className="btn" onClick={() => onQuery({ view: 'focus', node: sel.id, depth: graph.depth || 1 })}>{t('focusHere')}</button>
+          </>
+        ) : <span className="muted">{t('selectHint')}</span>}
+      </p>
       <button type="button" className="btn fit-btn" aria-pressed={!fit} onClick={() => setFit(!fit)}>
         {t(fit ? 'mapFit' : 'map100')}
       </button>
