@@ -12,7 +12,7 @@ import (
 func samples(t *testing.T, omit ...string) map[string]string {
 	t.Helper()
 	m := map[string]string{}
-	ents, err := os.ReadDir("../../samples")
+	ents, err := os.ReadDir("../samples")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +24,7 @@ func samples(t *testing.T, omit ...string) map[string]string {
 		if skip {
 			continue
 		}
-		b, err := os.ReadFile(filepath.Join("../../samples", e.Name()))
+		b, err := os.ReadFile(filepath.Join("../samples", e.Name()))
 		if err != nil {
 			t.Fatal(err)
 		}
