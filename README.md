@@ -1,5 +1,7 @@
 # Legacy Code Navigator
 
+[![CI](https://github.com/jacksonos/legacy-navigator/actions/workflows/ci.yml/badge.svg)](https://github.com/jacksonos/legacy-navigator/actions/workflows/ci.yml)
+
 Explore COBOL programs before you change them. Load sources and copybooks, search symbols, ask questions
 in natural language and get answers whose `file:line` citations are **verified against the code**, and
 see the PERFORM / CALL map — flagged as **partial** whenever a dependency can't be resolved.
