@@ -13,15 +13,26 @@ import (
 )
 
 type fakeProvider struct {
-	text string
-	err  error
-	user string
+	text    string
+	err     error
+	user    string
+	replies []string // when set, call i returns replies[i] (the last one repeats)
+	errs    []error  // when set, call i fails with errs[i] if non-nil
+	calls   [][2]string
 }
 
 func (f *fakeProvider) ID() string    { return "openai" }
 func (f *fakeProvider) Model() string { return "fake" }
-func (f *fakeProvider) Complete(_ context.Context, _, user string) (string, error) {
+func (f *fakeProvider) Complete(_ context.Context, system, user string) (string, error) {
+	i := len(f.calls)
+	f.calls = append(f.calls, [2]string{system, user})
 	f.user = user
+	if i < len(f.errs) && f.errs[i] != nil {
+		return "", f.errs[i]
+	}
+	if len(f.replies) > 0 {
+		return f.replies[min(i, len(f.replies)-1)], nil
+	}
 	return f.text, f.err
 }
 
@@ -160,7 +171,57 @@ func TestAskNoEvidenceSkipsLLM(t *testing.T) {
 	if code := postAsk(t, h, id, "zzzqx blorptang", &res); code != 200 {
 		t.Fatalf("code %d", code)
 	}
-	if res.Mode != "evidence" || res.Answer != "" || res.Evidence == nil || len(res.Evidence) != 0 || fp.user != "" {
+	if res.Mode != "evidence" || res.Answer != "" || res.Evidence == nil || len(res.Evidence) != 0 || len(fp.calls) > 1 {
 		t.Fatalf("%+v user=%q", res, fp.user)
+	}
+}
+
+const balanceQ = "Where is the balance calculated?"
+
+func TestAskExpandsQuestionToSymbols(t *testing.T) {
+	answer := "Calculated in [CALCSALD.cbl:86] and [CALCSALD.cbl:5]."
+	fp := &fakeProvider{replies: []string{`Sure: ["cta-saldo","NOPE-NAME"] done`, answer}}
+	h, id := askHandler(t, fp)
+	var res askResponse
+	if code := postAsk(t, h, id, balanceQ, &res); code != 200 {
+		t.Fatalf("code %d", code)
+	}
+	if len(fp.calls) != 2 {
+		t.Fatalf("calls = %d", len(fp.calls))
+	}
+	if fp.calls[0][0] != expandSystem || !strings.Contains(fp.calls[0][1], balanceQ) ||
+		!strings.Contains(fp.calls[0][1], "CTA-SALDO") || !strings.Contains(fp.calls[0][1], "4000-CALCULAR-SALDO") {
+		t.Fatalf("expansion prompt: %q", fp.calls[0][1])
+	}
+	if res.Mode != "llm" || !covers(res.Evidence, "CALCSALD.cbl", 86) || !covers(res.Evidence, "CALCSALD.cbl", 88) || !covers(res.Evidence, "CTAREG.cpy", 5) {
+		t.Fatalf("%+v", res)
+	}
+	if len(res.Citations) != 1 || res.Citations[0].Line != 86 || len(res.Unverified) != 1 || res.Unverified[0] != "CALCSALD.cbl:5" {
+		t.Fatalf("citations %+v unverified %v", res.Citations, res.Unverified)
+	}
+}
+
+func TestAskExpansionFallsBack(t *testing.T) {
+	for name, fp := range map[string]*fakeProvider{
+		"garbage": {replies: []string{"I cannot help with that", "plain answer"}},
+		"error":   {replies: []string{"", "plain answer"}, errs: []error{errors.New("boom")}},
+	} {
+		h, id := askHandler(t, fp)
+		var res askResponse
+		if code := postAsk(t, h, id, canonical, &res); code != 200 {
+			t.Fatalf("%s: code %d", name, code)
+		}
+		if res.Mode != "llm" || res.Answer != "plain answer" || !covers(res.Evidence, "CALCSALD.cbl", 86) {
+			t.Fatalf("%s: %+v", name, res)
+		}
+	}
+}
+
+func TestAskEvidenceModeDoesNotExpand(t *testing.T) {
+	h, id := askHandler(t)
+	var res askResponse
+	postAsk(t, h, id, balanceQ, &res)
+	if res.Mode != "evidence" || len(res.Evidence) != 0 {
+		t.Fatalf("%+v", res)
 	}
 }

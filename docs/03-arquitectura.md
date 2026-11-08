@@ -126,6 +126,11 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
       encontrados, los archivos con E/S en esos párrafos y sus vecinos a un salto en el grafo.
    3. Con todo ello se arman fragmentos de párrafos completos con números de línea, con un tope
       configurable (`ASK_MAX_CHARS`).
+   4. Solo con proveedor, antes del paso 1 se hace una llamada previa (15 s de tope) que asigna la
+      pregunta a nombres de símbolo del proyecto (datos, párrafos, secciones, archivos, programas;
+      máx. 3000). Solo se conservan los nombres que existen en el índice, y se suman a los aciertos
+      por término como símbolos acertados. Si la llamada falla, se sigue solo con los términos; sin
+      proveedor no hay expansión.
 4. **`llm/`**: la interfaz `Provider { Complete(ctx, system, user) (string, error) }` con tres
    implementaciones: OpenAI, Anthropic y Gemini. Se activa cada proveedor cuya clave esté presente.
 5. **Validador de citas**: extrae cada `[archivo:línea]` o `[archivo:línea-línea]` y comprueba que
@@ -175,9 +180,9 @@ se versiona; el repo incluye un `.env.example`.
 
 ## Limitaciones conocidas (se documentan en la UI)
 
-- **Términos de la pregunta**: la búsqueda solo encuentra lo que aparece en el código o en sus
-  comentarios. «balance» no encuentra `WS-SALDO`.
-  `ponytail:` si hace falta, se añade un paso del LLM que traduzca la pregunta a los nombres de símbolo del índice.
+- **Términos de la pregunta**: solo en modo evidencia (sin proveedor), la búsqueda solo encuentra lo
+  que aparece en el código o en sus comentarios. «balance» no encuentra `WS-SALDO`. Con proveedor,
+  la pregunta se asigna antes a nombres de símbolo.
 - Las referencias calificadas (`X OF Y`) y `REDEFINES` se resuelven por nombre; dos datos con el
   mismo nombre en grupos distintos se muestran ambos.
 - `EXEC SQL` / `EXEC CICS`: bloque opaco; solo se extraen las variables host `:VAR` como lecturas.

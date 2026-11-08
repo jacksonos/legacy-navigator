@@ -77,7 +77,7 @@ contracts: [docs/03-arquitectura.md](docs/03-arquitectura.md).
 ## Known limitations
 
 - Fixed-format COBOL only; free format and `COPY … REPLACING` are reported, not supported.
-- Question terms must appear in the code or its comments ("balance" won't find `WS-SALDO`).
+- In evidence-only mode (no provider), question terms must appear in the code or its comments ("balance" won't find `WS-SALDO`); with a provider, the question is first mapped to symbols.
 - Qualified names (`X OF Y`) and `REDEFINES` are resolved by name; `EXEC SQL/CICS` is opaque (host
   variables only); one program per file.
 - Projects are deleted after `PROJECT_TTL` (7 days by default).

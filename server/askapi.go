@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,9 @@ import (
 )
 
 var askTimeout = 60 * time.Second
+
+// expandTimeout bounds the symbol-expansion call inside askTimeout.
+var expandTimeout = 15 * time.Second
 
 type askRequest struct {
 	Question string `json:"question"`
@@ -69,15 +73,25 @@ func (a *api) ask(w http.ResponseWriter, r *http.Request) {
 	} else if len(a.providers) > 0 {
 		prov = 0
 	}
-	ev, err := retrieve(a.db, id, req.Question, maxChars())
+	ctx, cancel := context.WithTimeout(r.Context(), askTimeout)
+	defer cancel()
+	var extra []string
+	if prov >= 0 {
+		ectx, ecancel := context.WithTimeout(ctx, expandTimeout)
+		var err error
+		extra, err = expandSymbols(ectx, a.providers[prov], a.db, id, req.Question)
+		ecancel()
+		if err != nil {
+			log.Printf("ask: symbol expansion failed, using term retrieval only: %v", err)
+		}
+	}
+	ev, err := retrieve(a.db, id, req.Question, maxChars(), extra)
 	if err != nil {
 		serverError(w, err)
 		return
 	}
 	res := askResponse{Mode: "evidence", Citations: []Citation{}, Unverified: []string{}, Evidence: ev}
 	if prov >= 0 && len(ev) > 0 {
-		ctx, cancel := context.WithTimeout(r.Context(), askTimeout)
-		defer cancel()
 		system, user := buildPrompt(req.Question, req.Lang, ev)
 		text, err := a.providers[prov].Complete(ctx, system, user)
 		if errors.Is(err, context.DeadlineExceeded) {
