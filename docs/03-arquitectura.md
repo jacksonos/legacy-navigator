@@ -59,6 +59,22 @@ type LineHit = { file: string; line: number; text: string }                    /
 // Errores: { error: string } con 400 / 404 / 413
 ```
 
+### Contrato del grafo (H3)
+
+```ts
+// GET /api/projects/{id}/graph → 200 Graph
+type GraphNode = {
+  id: string                      // estable y único: "PROG:PARRAFO", "PROG" (programa), "ext:NOMBRE", "dyn:archivo:línea"
+  label: string
+  kind: "program" | "section" | "paragraph" | "external" | "dynamic"
+  file: string; line: number      // vacío/0 para external y dynamic sin origen
+  resolved: boolean               // false: CALL a programa no cargado o dinámico → borde discontinuo
+}
+type GraphEdge = { from: string; to: string; kind: "perform" | "goto" | "call"; file: string; line: number; uncertain: boolean }
+type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
+// partial = hay algún aviso missing_copy | dynamic_call | unresolved_call | alter | goto_depending; reasons = esos avisos
+```
+
 ## Módulos del servidor
 
 1. **`cobol/`** (paquete puro, sin E/S; es el núcleo que se prueba):
