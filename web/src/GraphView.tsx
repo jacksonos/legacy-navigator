@@ -85,10 +85,11 @@ export default function GraphView({ graph, focus, onNode }: { graph: Graph; focu
         box.current.innerHTML = svg
         let first: SVGGElement | null = null
         box.current.querySelectorAll<SVGGElement>('g.node').forEach((el) => {
-          const n = byMermaidId.get(/^flowchart-(n\d+)-/.exec(el.id)?.[1] ?? '')
+          const n = byMermaidId.get(/flowchart-(n\d+)-\d+$/.exec(el.id)?.[1] ?? '')
           if (!n) return
           if (hot.size) {
-            if (hot.has(n.id)) first ??= el
+            if (n.label === focus && n.kind !== 'program') first = el // the searched paragraph itself, not just a neighbour
+            else if (hot.has(n.id)) first ??= el
             else el.classList.add('dim')
           }
           const go = () => onNodeRef.current(n)
