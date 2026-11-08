@@ -280,9 +280,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
                 </div>
               )}
               <Legend />
-              <div className="map-wrap">
-                <GraphView graph={graph} focus={focus} onNode={onNode} />
-              </div>
+              <GraphView graph={graph} focus={focus} onNode={onNode} />
             </div>
           ) : <p className="muted">{project ? t('loading') : t('noProject')}</p>)}
         </section>

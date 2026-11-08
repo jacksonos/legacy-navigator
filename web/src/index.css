@@ -62,7 +62,11 @@ input[type=search], select { padding: .3rem .4rem; background: var(--panel); col
 .map-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .map-wrap { flex: 1; min-height: 0; overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--code-bg); }
 .map { width: max-content; min-width: 100%; }
+.map.fit { width: 100%; }
+.map.fit svg { max-width: 100%; height: auto; }
 .map svg { display: block; }
+.map g.node.dim { opacity: .3; }
+.fit-btn { align-self: flex-start; margin: 0 0 .4rem; font-size: .8rem; padding: .15rem .6rem; }
 .banner { border: 2px solid var(--w); border-radius: 4px; padding: .4rem .6rem; margin-bottom: .4rem; max-height: 9rem; overflow: auto; }
 .banner > strong { color: var(--w); text-transform: uppercase; letter-spacing: .03em; }
 .legend { margin: 0 0 .4rem; }

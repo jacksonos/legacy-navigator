@@ -4,7 +4,7 @@ import { useT } from './i18n'
 
 const esc = (s: string) => s.replace(/[#"<>&]/g, (c) => `#${c.charCodeAt(0)};`)
 
-/** Builds the Mermaid source; `ids` maps generated ids (n0, n1…) back to nodes. */
+/** Builds the Mermaid source; `byMermaidId` maps generated ids (n0, n1…) back to nodes. */
 function toMermaid(g: Graph, focus: string | null) {
   const ids = new Map<string, string>()
   g.nodes.forEach((n, i) => ids.set(n.id, `n${i}`))
@@ -18,7 +18,15 @@ function toMermaid(g: Graph, focus: string | null) {
     })
   }
   const out = ['flowchart LR']
-  g.nodes.forEach((n) => out.push(`${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind}`))
+  const def = (n: GraphNode) => `${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind}`
+  const progOf = (n: GraphNode) =>
+    n.kind === 'program' ? n.id : n.kind === 'section' || n.kind === 'paragraph' ? n.id.split(':')[0] : ''
+  g.nodes.filter((n) => n.kind === 'program').forEach((p, i) => {
+    out.push(`subgraph sg${i}["${esc(p.label)}"]`)
+    g.nodes.filter((n) => progOf(n) === p.id).forEach((n) => out.push('  ' + def(n)))
+    out.push('end')
+  })
+  g.nodes.filter((n) => !progOf(n)).forEach((n) => out.push(def(n)))
   g.edges.forEach((e) => {
     const a = ids.get(e.from), b = ids.get(e.to)
     if (e.kind === 'call' && !e.uncertain) out.push(`${a} ==> ${b}`)
@@ -34,16 +42,12 @@ function toMermaid(g: Graph, focus: string | null) {
     'classDef dynamic fill:#6b7280,stroke:#374151,color:#fff',
     'classDef unresolved stroke-dasharray:6 4,stroke-width:2px',
     'classDef highlight stroke:#f59e0b,stroke-width:4px',
-    'classDef dim opacity:.3',
   )
   const unres = g.nodes.filter((n) => !n.resolved).map((n) => ids.get(n.id))
   if (unres.length) out.push(`class ${unres.join(',')} unresolved`)
-  if (hot.size) {
-    out.push(`class ${[...hot].map((h) => ids.get(h)).join(',')} highlight`)
-    const cold = g.nodes.filter((n) => !hot.has(n.id)).map((n) => ids.get(n.id))
-    if (cold.length) out.push(`class ${cold.join(',')} dim`)
-  }
-  return { code: out.join('\n'), byMermaidId: new Map(g.nodes.map((n) => [ids.get(n.id)!, n])) }
+  if (hot.size) out.push(`class ${[...hot].map((h) => ids.get(h)).join(',')} highlight`)
+  // dimming is applied to the rendered node groups (shape + label) in GraphView
+  return { code: out.join('\n'), hot, byMermaidId: new Map(g.nodes.map((n) => [ids.get(n.id)!, n])) }
 }
 
 let seq = 0
@@ -64,22 +68,29 @@ function loadMermaid() {
 export default function GraphView({ graph, focus, onNode }: { graph: Graph; focus: string | null; onNode: (n: GraphNode) => void }) {
   const t = useT()
   const box = useRef<HTMLDivElement>(null)
+  const [fit, setFit] = useState(true)
+  const fitRef = useRef(fit)
   const [state, setState] = useState<'loading' | 'ok' | 'error'>('loading')
   const onNodeRef = useRef(onNode)
-  useEffect(() => { onNodeRef.current = onNode })
+  useEffect(() => { onNodeRef.current = onNode; fitRef.current = fit })
 
   useEffect(() => {
     if (!graph.nodes.length) return
     let live = true
-    const { code, byMermaidId } = toMermaid(graph, focus)
+    const { code, hot, byMermaidId } = toMermaid(graph, focus)
     loadMermaid()
       .then((m) => m.render(`mmd${++seq}`, code))
       .then(({ svg }) => {
         if (!live || !box.current) return
         box.current.innerHTML = svg
+        let first: SVGGElement | null = null
         box.current.querySelectorAll<SVGGElement>('g.node').forEach((el) => {
           const n = byMermaidId.get(/^flowchart-(n\d+)-/.exec(el.id)?.[1] ?? '')
           if (!n) return
+          if (hot.size) {
+            if (hot.has(n.id)) first ??= el
+            else el.classList.add('dim')
+          }
           const go = () => onNodeRef.current(n)
           el.style.cursor = 'pointer'
           el.setAttribute('tabindex', '0')
@@ -87,6 +98,7 @@ export default function GraphView({ graph, focus, onNode }: { graph: Graph; focu
           el.addEventListener('click', go)
           el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go() } })
         })
+        if (first && !fitRef.current) (first as SVGGElement).scrollIntoView({ block: 'center', inline: 'center' })
         setState('ok')
       })
       .catch(() => { if (live) setState('error') })
@@ -98,7 +110,12 @@ export default function GraphView({ graph, focus, onNode }: { graph: Graph; focu
     <>
       {state === 'loading' && <p className="muted">{t('mapLoading')}</p>}
       {state === 'error' && <p className="err">{t('mapError')}</p>}
-      <div className="map" ref={box} />
+      <button type="button" className="btn fit-btn" aria-pressed={!fit} onClick={() => setFit(!fit)}>
+        {t(fit ? 'mapFit' : 'map100')}
+      </button>
+      <div className="map-wrap">
+        <div className={fit ? 'map fit' : 'map'} ref={box} />
+      </div>
     </>
   )
 }
