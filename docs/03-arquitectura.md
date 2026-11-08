@@ -78,7 +78,7 @@ type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons
 ### Contrato de preguntas (H4)
 
 ```ts
-// GET /api/providers → 200 { providers: { id: "openai" | "anthropic" | "gemini"; model: string }[] }   // solo los configurados
+// GET /api/providers → 200 { providers: { id: "openai" | "anthropic" | "gemini" | "openrouter"; model: string }[] }   // solo los configurados
 
 // POST /api/projects/{id}/ask
 type AskRequest = { question: string /* 1..500 caracteres */; lang: "en" | "es"; provider?: string }
@@ -95,9 +95,11 @@ type AskResponse = {
 // Errores { error }: 400 (pregunta vacía/larga, proveedor desconocido o sin configurar), 404, 502 (fallo del proveedor), 504 (timeout 60 s)
 ```
 
-Sin `provider` en la petición se usa el primero configurado (orden: anthropic, openai, gemini).
+Sin `provider` en la petición se usa el primero configurado (orden: anthropic, openai, gemini, openrouter).
 Un proveedor se activa con su clave **y** su modelo: `ANTHROPIC_MODEL` vale `claude-sonnet-5-5` por defecto;
-`OPENAI_MODEL` y `GEMINI_MODEL` son obligatorios para no fijar en el código nombres de modelo que caducan.
+`OPENAI_MODEL`, `GEMINI_MODEL` y `OPENROUTER_MODEL` son obligatorios para no fijar en el código nombres de modelo que caducan.
+OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con base `https://openrouter.ai/api`, la clave
+`OPENROUTER_API_KEY`, modelos con prefijo de proveedor (`openai/…`, `anthropic/…`) y la cabecera `X-Title: Legacy Code Navigator`.
 
 ## Módulos del servidor
 
