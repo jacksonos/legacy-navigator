@@ -46,6 +46,7 @@ func (a *api) register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects/{id}", a.project)
 	mux.HandleFunc("GET /api/projects/{id}/files/{name}", a.file)
 	mux.HandleFunc("GET /api/projects/{id}/search", a.search)
+	mux.HandleFunc("GET /api/projects/{id}/graph", a.graph)
 }
 
 func validExt(name string) bool {

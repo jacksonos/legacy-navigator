@@ -12,9 +12,12 @@ const en = {
   noProject: 'No project yet. Upload files or use the samples.',
   projectWarnings: 'Project warnings',
   programId: 'PROGRAM-ID',
-  lines: 'lines',
-  paragraphs: 'paragraphs',
-  dataItems: 'data items',
+  'lines.one': 'line',
+  'lines.other': 'lines',
+  'paragraphs.one': 'paragraph',
+  'paragraphs.other': 'paragraphs',
+  'dataItems.one': 'data item',
+  'dataItems.other': 'data items',
   viewer: 'Code viewer',
   noFile: 'Select a file or a search result to view its code.',
   search: 'Search',
@@ -48,6 +51,22 @@ const en = {
   'err.413': 'Upload too large (limit: 1 MB per file, 10 MB per project).',
   'err.other': 'Unexpected error.',
   projectGone: 'The project in the URL no longer exists.',
+  tabCode: 'Code',
+  tabMap: 'Map',
+  showInMap: 'Show in map',
+  mapLoading: 'Rendering map…',
+  mapError: 'The map could not be rendered.',
+  mapEmpty: 'No call graph to show.',
+  mapFit: 'Size: fit (click for 100%)',
+  map100: 'Size: 100% (click to fit)',
+  partialMap: 'Partial map',
+  partialWhy: 'Some calls could not be fully resolved:',
+  legend: 'Legend',
+  'legend.perform': 'PERFORM',
+  'legend.goto': 'GO TO',
+  'legend.call': 'CALL',
+  'legend.uncertain': 'Uncertain (?)',
+  'legend.unresolved': 'Unresolved (not loaded / dynamic)',
 } as const
 
 export type Key = keyof typeof en
@@ -65,9 +84,12 @@ const es: Record<Key, string> = {
   noProject: 'Aún no hay proyecto. Sube archivos o usa los ejemplos.',
   projectWarnings: 'Avisos del proyecto',
   programId: 'PROGRAM-ID',
-  lines: 'líneas',
-  paragraphs: 'párrafos',
-  dataItems: 'datos',
+  'lines.one': 'línea',
+  'lines.other': 'líneas',
+  'paragraphs.one': 'párrafo',
+  'paragraphs.other': 'párrafos',
+  'dataItems.one': 'dato',
+  'dataItems.other': 'datos',
   viewer: 'Visor de código',
   noFile: 'Elige un archivo o un resultado de búsqueda para ver su código.',
   search: 'Buscar',
@@ -101,6 +123,22 @@ const es: Record<Key, string> = {
   'err.413': 'Carga demasiado grande (límite: 1 MB por archivo, 10 MB por proyecto).',
   'err.other': 'Error inesperado.',
   projectGone: 'El proyecto de la URL ya no existe.',
+  tabCode: 'Código',
+  tabMap: 'Mapa',
+  showInMap: 'Ver en el mapa',
+  mapLoading: 'Dibujando el mapa…',
+  mapError: 'No se pudo dibujar el mapa.',
+  mapEmpty: 'No hay grafo de llamadas que mostrar.',
+  mapFit: 'Tamaño: ajustar (clic para 100%)',
+  map100: 'Tamaño: 100% (clic para ajustar)',
+  partialMap: 'Mapa parcial',
+  partialWhy: 'Algunas llamadas no se pudieron resolver del todo:',
+  legend: 'Leyenda',
+  'legend.perform': 'PERFORM',
+  'legend.goto': 'GO TO',
+  'legend.call': 'CALL',
+  'legend.uncertain': 'Incierta (?)',
+  'legend.unresolved': 'Sin resolver (no cargado / dinámico)',
 }
 
 export const dict: Record<Lang, Record<Key, string>> = { en, es }
@@ -119,4 +157,11 @@ export const I18nContext = createContext<Lang>('en')
 export function useT() {
   const lang = useContext(I18nContext)
   return (k: string) => (dict[lang] as Record<string, string>)[k] ?? k
+}
+/** "1 line" / "2 lines": picks key.one or key.other by the language's plural rules. */
+export function useCount() {
+  const lang = useContext(I18nContext)
+  const t = useT()
+  const rules = new Intl.PluralRules(lang)
+  return (key: string, n: number) => `${n} ${t(`${key}.${rules.select(n) === 'one' ? 'one' : 'other'}`)}`
 }

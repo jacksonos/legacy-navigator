@@ -6,6 +6,13 @@ export type SymbolHit = { name: string; kind: string; def: { file: string; line:
 export type LineHit = { file: string; line: number; text: string }
 export type SearchResult = { results: SymbolHit[]; lines: LineHit[] }
 
+export type GraphNode = {
+  id: string; label: string; kind: 'program' | 'section' | 'paragraph' | 'external' | 'dynamic'
+  file: string; line: number; resolved: boolean
+}
+export type GraphEdge = { from: string; to: string; kind: 'perform' | 'goto' | 'call'; file: string; line: number; uncertain: boolean }
+export type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
+
 export class ApiError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -48,3 +55,4 @@ export const search = (id: string, q: string, kind: string, signal?: AbortSignal
     `/api/projects/${encodeURIComponent(id)}/search?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ''}`,
     { signal },
   )
+export const getGraph = (id: string) => call<Graph>(`/api/projects/${encodeURIComponent(id)}/graph`)
