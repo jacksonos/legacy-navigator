@@ -5,7 +5,7 @@ import type { Lang } from './i18n'
 
 type Open = (file: string, line?: number) => void
 const CITE = /^(.+):(\d+)(?:-\d+)?$/
-const NAMES: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini' }
+const NAMES: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini', openrouter: 'OpenRouter' }
 const label = (p: Provider) => `${NAMES[p.id] ?? p.id} (${p.model})`
 
 /** Plain text with every [file:line], [file:a-b] or comma list inside one bracket turned into viewer links. */
