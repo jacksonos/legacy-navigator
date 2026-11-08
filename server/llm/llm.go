@@ -1,4 +1,4 @@
-// Package llm talks to OpenAI, Anthropic and Gemini over plain HTTP (no SDKs).
+// Package llm talks to OpenAI, Anthropic, Gemini and OpenRouter over plain HTTP (no SDKs).
 package llm
 
 import (
@@ -100,10 +100,19 @@ func (p *Anthropic) Complete(ctx context.Context, system, user string) (string, 
 	return sb.String(), nil
 }
 
-type OpenAI struct{ client }
+// OpenAI also serves OpenRouter (same chat-completions API) with another id, base and extra headers.
+type OpenAI struct {
+	client
+	extra map[string]string
+}
 
 func NewOpenAI(key, model, base string, hc *http.Client) *OpenAI {
-	return &OpenAI{newClient("openai", key, model, base, "https://api.openai.com", hc)}
+	return &OpenAI{client: newClient("openai", key, model, base, "https://api.openai.com", hc)}
+}
+
+func NewOpenRouter(key, model, base string, hc *http.Client) *OpenAI {
+	return &OpenAI{newClient("openrouter", key, model, base, "https://openrouter.ai/api", hc),
+		map[string]string{"X-Title": "Legacy Code Navigator"}}
 }
 
 func (p *OpenAI) Complete(ctx context.Context, system, user string) (string, error) {
@@ -112,7 +121,11 @@ func (p *OpenAI) Complete(ctx context.Context, system, user string) (string, err
 			Message struct{ Content string } `json:"message"`
 		} `json:"choices"`
 	}
-	err := p.post(ctx, "/v1/chat/completions", map[string]string{"Authorization": "Bearer " + p.key}, map[string]any{
+	hdr := map[string]string{"Authorization": "Bearer " + p.key}
+	for k, v := range p.extra {
+		hdr[k] = v
+	}
+	err := p.post(ctx, "/v1/chat/completions", hdr, map[string]any{
 		"model": p.model,
 		"messages": []map[string]string{
 			{"role": "system", "content": system}, {"role": "user", "content": user}},
@@ -121,7 +134,7 @@ func (p *OpenAI) Complete(ctx context.Context, system, user string) (string, err
 		return "", err
 	}
 	if len(out.Choices) == 0 {
-		return "", fmt.Errorf("openai: empty response")
+		return "", fmt.Errorf("%s: empty response", p.id)
 	}
 	return out.Choices[0].Message.Content, nil
 }
@@ -160,7 +173,7 @@ func (p *Gemini) Complete(ctx context.Context, system, user string) (string, err
 	return sb.String(), nil
 }
 
-// FromEnv returns the providers with a key and a model, in order anthropic, openai, gemini.
+// FromEnv returns the providers with a key and a model, in order anthropic, openai, gemini, openrouter.
 func FromEnv() []Provider {
 	var ps []Provider
 	add := func(env, def string, mk func(k, m string) Provider) {
@@ -181,5 +194,6 @@ func FromEnv() []Provider {
 	add("ANTHROPIC", "claude-sonnet-5-5", func(k, m string) Provider { return NewAnthropic(k, m, "", nil) })
 	add("OPENAI", "", func(k, m string) Provider { return NewOpenAI(k, m, "", nil) })
 	add("GEMINI", "", func(k, m string) Provider { return NewGemini(k, m, "", nil) })
+	add("OPENROUTER", "", func(k, m string) Provider { return NewOpenRouter(k, m, "", nil) })
 	return ps
 }

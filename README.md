@@ -22,7 +22,7 @@ see the PERFORM / CALL map — flagged as **partial** whenever a dependency can'
   **Partial map** banner lists exactly what couldn't be resolved: missing copybooks, dynamic `CALL`,
   programs not loaded, `ALTER`, `GO TO … DEPENDING ON`.
 - **Ask**: "Where is the balance calculated and which files are involved?" → an answer from OpenAI,
-  Claude or Gemini, grounded on retrieved paragraphs. Every citation is checked server-side; invented
+  Claude, Gemini or OpenRouter, grounded on retrieved paragraphs. Every citation is checked server-side; invented
   ones are removed and reported. Without an API key it still works in **evidence-only mode**.
 - **EN / ES** interface.
 
@@ -52,6 +52,7 @@ docker run -p 8080:8080 -v navigator-data:/data -e ANTHROPIC_API_KEY=... legacy-
 | `ANTHROPIC_API_KEY` + `ANTHROPIC_MODEL` | Enables Claude (model defaults to `claude-sonnet-5-5`) |
 | `OPENAI_API_KEY` + `OPENAI_MODEL` | Enables OpenAI (model required) |
 | `GEMINI_API_KEY` + `GEMINI_MODEL` | Enables Gemini (model required) |
+| `OPENROUTER_API_KEY` + `OPENROUTER_MODEL` | Enables OpenRouter (model required, e.g. `openai/gpt-4o`) |
 | `ASK_MAX_CHARS` | Max characters of code sent per question (default 24000) |
 | `DB_PATH` | SQLite file (default `./data/navigator.db`, `/data/navigator.db` in Docker) |
 | `ADDR` | Listen address (default `:8080`) |
@@ -64,7 +65,7 @@ API keys live only in the server environment. Only the selected snippets are sen
 React + Vite UI ──JSON──► Go (net/http) ── cobol/  fixed-format normalizer · COPY expansion · parser
                                         ── SQLite + FTS5  symbols · refs · edges · source lines
                                         ── ask     retrieve paragraphs → LLM → validate citations
-                                        ── llm/    OpenAI | Anthropic | Gemini over plain HTTP
+                                        ── llm/    OpenAI | Anthropic | Gemini | OpenRouter over plain HTTP
 One static binary serves the API and the embedded UI → one distroless Docker image.
 ```
 
