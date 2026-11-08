@@ -1,0 +1,15 @@
+services:
+  app:
+    build: .
+    image: legacy-navigator
+    ports:
+      - "8080:8080"
+    volumes:
+      - navigator-data:/data
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+
+volumes:
+  navigator-data:
