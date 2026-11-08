@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"io/fs"
@@ -13,8 +14,9 @@ import (
 //go:embed all:static
 var staticFS embed.FS
 
-func newHandler(static fs.FS) http.Handler {
+func newHandler(static fs.FS, db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
+	(&api{db}).register(mux)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
@@ -46,10 +48,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "./data/navigator.db"
+	}
+	db, err := openDB(dbPath)
+	if err != nil {
+		log.Fatal(err)
+	}
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
 	log.Printf("listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, newHandler(sub)))
+	log.Fatal(http.ListenAndServe(addr, newHandler(sub, db)))
 }
