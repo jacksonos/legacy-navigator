@@ -56,6 +56,7 @@ docker run -p 8080:8080 -v navigator-data:/data -e ANTHROPIC_API_KEY=... legacy-
 | `ASK_MAX_CHARS` | Max characters of code sent per question (default 24000) |
 | `DB_PATH` | SQLite file (default `./data/navigator.db`, `/data/navigator.db` in Docker) |
 | `ADDR` | Listen address (default `:8080`) |
+| `PROJECT_TTL` | How long projects are kept (Go duration, default `168h`; `0` = never delete) |
 
 API keys live only in the server environment. Only the selected snippets are sent to the provider.
 
@@ -79,7 +80,7 @@ contracts: [docs/03-arquitectura.md](docs/03-arquitectura.md).
 - Question terms must appear in the code or its comments ("balance" won't find `WS-SALDO`).
 - Qualified names (`X OF Y`) and `REDEFINES` are resolved by name; `EXEC SQL/CICS` is opaque (host
   variables only); one program per file.
-- Projects are stored without expiry.
+- Projects are deleted after `PROJECT_TTL` (7 days by default).
 
 The same list is shown in the app (**Limitations** in the header).
 

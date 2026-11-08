@@ -142,6 +142,7 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
 | `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | Modelo por proveedor. Por defecto `claude-sonnet-5-5` para Anthropic; los de OpenAI y Gemini se fijan en H4 con la documentación vigente |
 | `DB_PATH` | Ruta del archivo SQLite (por defecto `./data/navigator.db`) |
 | `ADDR` | Dirección de escucha (por defecto `:8080`) |
+| `PROJECT_TTL` | Vida de un proyecto (duración Go, por defecto `168h`; `0` = no borrar). Limpieza al arrancar y cada hora |
 
 ## Despliegue (Docker)
 
@@ -181,4 +182,4 @@ se versiona; el repo incluye un `.env.example`.
   mismo nombre en grupos distintos se muestran ambos.
 - `EXEC SQL` / `EXEC CICS`: bloque opaco; solo se extraen las variables host `:VAR` como lecturas.
 - `COPY … REPLACING` y el formato libre no están soportados; aparecen como aviso.
-- Los proyectos se guardan sin caducidad. `ponytail:` añadir una limpieza por antigüedad si se publica una demo abierta.
+- Los proyectos se borran al superar `PROJECT_TTL` (7 días por defecto); no hay cuotas por usuario ni límite de peticiones.
