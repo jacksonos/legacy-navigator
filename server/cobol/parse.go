@@ -30,10 +30,6 @@ func Analyze(files map[string]string) *Project {
 	}
 	var exp []expanded
 	for _, n := range names {
-		if isFreeFormat(files[n]) {
-			proj.Warnings = append(proj.Warnings, Warning{WFreeFormat, ">>SOURCE FORMAT FREE is not supported", Loc{n, 1}})
-			continue
-		}
 		var w []Warning
 		toks := c.expand(c.tokens(n), []string{baseKey(n)}, &w)
 		exp = append(exp, expanded{n, toks, w})

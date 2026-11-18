@@ -10,14 +10,37 @@ type Token struct {
 	Col  int // 1-based original column
 }
 
-func isFreeFormat(src string) bool {
-	for _, l := range strings.Split(src, "\n") {
-		u := strings.ToUpper(strings.TrimSpace(l))
-		if strings.HasPrefix(u, ">>SOURCE") && strings.Contains(u, "FREE") {
-			return true
+// formatDirective recognizes >>SOURCE [FORMAT [IS]] FREE|FIXED and $SET SOURCEFORMAT"FREE|FIXED".
+func formatDirective(line string) (free, ok bool) {
+	u := strings.ToUpper(strings.TrimSpace(line))
+	if !strings.HasPrefix(u, ">>SOURCE") && !(strings.HasPrefix(u, "$SET") && strings.Contains(u, "SOURCEFORMAT")) {
+		return false, false
+	}
+	switch {
+	case strings.Contains(u, "FREE"):
+		return true, true
+	case strings.Contains(u, "FIXED"):
+		return false, true
+	}
+	return false, false
+}
+
+// stripComment cuts a floating "*>" comment (outside literals) to the end of the line.
+func stripComment(s string) string {
+	var q byte
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case q != 0:
+			if c == q {
+				q = 0
+			}
+		case c == '\'' || c == '"':
+			q = c
+		case c == '*' && i+1 < len(s) && s[i+1] == '>':
+			return s[:i]
 		}
 	}
-	return false
+	return s
 }
 
 // lit scans a quoted literal body from p; a doubled quote is an escape.
@@ -35,24 +58,34 @@ func lit(s string, p int, q byte) (end int, closed bool) {
 	return p, false
 }
 
-// tokenize applies the fixed-format rules: cols 1-6 and 73+ ignored, col 7
-// '*' '/' 'D' comment/debug, '-' continuation.
+// tokenize applies the fixed-format rules (cols 1-6 and 73+ ignored, col 7
+// '*' '/' 'D' comment/debug, '-' continuation) until a free-format directive
+// switches to free format (no columns); "*>" comments work in both.
 func tokenize(file, src string) []Token {
 	var toks []Token
 	var open byte // quote of a literal left unterminated on the previous line
+	free := false
 	for n, raw := range strings.Split(src, "\n") {
 		line := strings.ReplaceAll(strings.TrimRight(raw, "\r"), "\t", "    ")
-		if len(line) < 7 {
+		if f, ok := formatDirective(line); ok {
+			free = f
 			continue
 		}
-		ind := line[6]
-		if ind == '*' || ind == '/' || ind == 'D' || ind == 'd' {
-			continue
+		ind, text := byte(' '), line
+		if !free {
+			if len(line) < 7 {
+				continue
+			}
+			ind = line[6]
+			if ind == '*' || ind == '/' || ind == 'D' || ind == 'd' {
+				continue
+			}
+			text = line[7:]
+			if len(text) > 65 {
+				text = text[:65]
+			}
 		}
-		text := line[7:]
-		if len(text) > 65 {
-			text = text[:65]
-		}
+		text = stripComment(text)
 		j := 0
 		if ind == '-' {
 			for j < len(text) && text[j] == ' ' {

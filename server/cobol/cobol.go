@@ -1,4 +1,4 @@
-// Package cobol parses fixed-format COBOL sources held in memory: it
+// Package cobol parses fixed- and free-format COBOL sources held in memory: it
 // normalizes lines, expands COPY and indexes data, paragraphs, references
 // and the call graph. It is regex/line-based and never does I/O.
 package cobol
@@ -17,8 +17,7 @@ const (
 	WAlter          = "alter"
 	WGotoDepending  = "goto_depending"
 	WNotCobol       = "not_cobol"
-	WFreeFormat     = "free_format"
-	WUnsupported    = "unsupported" // COPY REPLACING, recursive COPY
+	WUnsupported    = "unsupported" // recursive COPY
 )
 
 type Warning struct {
