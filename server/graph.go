@@ -44,7 +44,10 @@ var partialKinds = map[string]bool{"missing_copy": true, "dynamic_call": true, "
 
 func buildGraph(db *sql.DB, id string) (Graph, error) {
 	g := Graph{Nodes: []GraphNode{}, Edges: []GraphEdge{}, Reasons: []Warning{}}
-	prog := map[string]string{} // file -> program ID
+	ix, err := loadProgIndex(db, id)
+	if err != nil {
+		return g, err
+	}
 	have := map[string]bool{}
 	add := func(n GraphNode) {
 		if !have[n.ID] {
@@ -68,15 +71,12 @@ func buildGraph(db *sql.DB, id string) (Graph, error) {
 			return g, err
 		}
 		syms = append(syms, s)
-		if s.kind == "program" {
-			prog[s.file] = s.name
-		}
 	}
 	rows.Close()
 	for _, s := range syms {
 		if s.kind == "program" {
 			add(GraphNode{s.name, s.name, "program", s.file, s.line, true})
-		} else if p := prog[s.file]; p != "" {
+		} else if p := ix.at(s.file, s.line); p != "" {
 			add(GraphNode{p + ":" + s.name, s.name, s.kind, s.file, s.line, true})
 		}
 	}
@@ -94,7 +94,7 @@ func buildGraph(db *sql.DB, id string) (Graph, error) {
 		if err := rows.Scan(&from, &to, &e.Kind, &e.File, &e.Line, &e.Uncertain, &dyn); err != nil {
 			return g, err
 		}
-		p := prog[e.File]
+		p := ix.at(e.File, e.Line)
 		if p == "" {
 			continue
 		}
@@ -289,14 +289,19 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 		serverError(w, err)
 		return
 	}
+	ix, err := loadProgIndex(a.db, id)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	var programs []string
-	progFile := map[string]string{} // program -> file
+	isProg := map[string]bool{}
 	have := map[string]bool{}
 	for _, n := range full.Nodes {
 		have[n.ID] = true
 		if n.Kind == "program" {
 			programs = append(programs, n.ID)
-			progFile[n.ID] = n.File
+			isProg[n.ID] = true
 		}
 	}
 	sort.Strings(programs)
@@ -326,7 +331,7 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 	case "system":
 		program = ""
 	case "program":
-		if _, ok := progFile[program]; !ok {
+		if !isProg[program] {
 			fail(w, http.StatusBadRequest, "unknown program")
 			return
 		}
@@ -347,11 +352,7 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 		if g.Program == "" {
 			for _, n := range full.Nodes {
 				if n.ID == g.Node && n.Kind == "dynamic" {
-					for p, f := range progFile {
-						if f == n.File {
-							g.Program = p
-						}
-					}
+					g.Program = ix.at(n.File, n.Line)
 				}
 			}
 		}
@@ -375,7 +376,8 @@ func (a *api) graph(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
-		if partialKinds[x.Kind] && (g.Program == "" || files[x.File]) {
+		// a warning inside another program of the same file is not a reason for this view
+		if p := ix.at(x.File, x.Line); partialKinds[x.Kind] && (g.Program == "" || files[x.File] && (p == "" || p == g.Program)) {
 			reasons = append(reasons, x)
 		}
 	}

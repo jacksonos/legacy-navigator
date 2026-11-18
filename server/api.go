@@ -180,16 +180,18 @@ type Ref struct {
 	File      string `json:"file"`
 	Line      int    `json:"line"`
 	Paragraph string `json:"paragraph"`
+	Program   string `json:"program"` // PROGRAM-ID containing the line
 }
 type Def struct {
 	File string `json:"file"`
 	Line int    `json:"line"`
 }
 type SymbolHit struct {
-	Name string `json:"name"`
-	Kind string `json:"kind"`
-	Def  Def    `json:"def"`
-	Refs []Ref  `json:"refs"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Program string `json:"program"` // "" for symbols defined in a copybook
+	Def     Def    `json:"def"`
+	Refs    []Ref  `json:"refs"`
 }
 type LineHit struct {
 	File string `json:"file"`
@@ -227,6 +229,11 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		Lines   []LineHit   `json:"lines"`
 	}{[]SymbolHit{}, []LineHit{}}
 
+	ix, err := loadProgIndex(a.db, id)
+	if err != nil {
+		serverError(w, err)
+		return
+	}
 	rows, err := a.db.Query(`SELECT name, kind, file, line FROM symbols
 		WHERE project=? AND instr(upper(name), upper(?))>0 AND (?='' OR kind=?)
 		ORDER BY name, file, line LIMIT ?`, id, q, kind, kind, maxHits)
@@ -241,6 +248,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 			serverError(w, err)
 			return
 		}
+		s.Program = ix.at(s.Def.File, s.Def.Line)
 		s.Refs = []Ref{}
 		res.Results = append(res.Results, s)
 	}
@@ -261,6 +269,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 				serverError(w, err)
 				return
 			}
+			x.Program = ix.at(x.File, x.Line)
 			s.Refs = append(s.Refs, x)
 		}
 		rr.Close()
