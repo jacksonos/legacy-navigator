@@ -46,14 +46,14 @@ Las claves de los LLM solo viven en el servidor, en variables de entorno. El nav
 
 ```ts
 type Warning = { kind: string; detail: string; file: string; line: number }   // file/line pueden ir vacíos/0
-type FileSummary = { name: string; lines: number; programId: string /* el primero */; programIds: string[] /* todos los del archivo */; paragraphs: number; dataItems: number; warnings: Warning[] }
+type FileSummary = { name: string; lines: number; language: "cobol" | "cl" | "copybook"; programId: string /* el primero */; programIds: string[] /* todos los del archivo */; paragraphs: number; dataItems: number; warnings: Warning[] }
 type Project = { id: string; files: FileSummary[]; warnings: Warning[] }      // warnings = nivel proyecto
 
 // POST /api/projects (multipart, campo "files" repetido) | POST /api/projects?samples=1|large   → 201 Project
 // GET  /api/projects/{id}                                                                → 200 Project
 // GET  /api/projects/{id}/files/{name}      → 200 { name: string; lines: string[] }      // líneas crudas, índice 0 = línea 1
 // GET  /api/projects/{id}/search?q=&kind=   kind ∈ data|paragraph|section|file|program (opcional)
-type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string; program: string }   // program = PROGRAM-ID que contiene la línea
+type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string; program: string; detail?: string }   // program = PROGRAM-ID que contiene la línea; detail = dato extra (CL: destino de OVRDBF, `LIB/ARCHIVO`)
 type SymbolHit = { name: string; kind: string; program: string /* "" si viene de un copybook */; def: { file: string; line: number }; refs: Ref[] }
 type LineHit = { file: string; line: number; text: string }                    // aciertos FTS5 sobre las líneas
 // → 200 { results: SymbolHit[]; lines: LineHit[] }   (máx. 50 de cada)
@@ -73,10 +73,12 @@ type GraphNode = {
   id: string                      // estable y único: "PROG:PARRAFO", "PROG" (programa), "ext:NOMBRE", "dyn:archivo:línea"
   label: string
   kind: "program" | "section" | "paragraph" | "external" | "dynamic"
+  language: "cobol" | "cl" | ""   // lenguaje del programa que contiene el nodo; "" en external y dynamic
   file: string; line: number      // vacío/0 para external y dynamic sin origen
   resolved: boolean               // false: CALL a programa no cargado o dinámico → borde discontinuo
 }
-type GraphEdge = { from: string; to: string; kind: "perform" | "goto" | "call"; file: string; line: number; uncertain: boolean }
+type GraphEdge = { from: string; to: string; kind: "perform" | "goto" | "call"; file: string; line: number; uncertain: boolean; async: boolean }
+// async = true solo en SBMJOB (un `call` que corre en otro trabajo). En CL, CALL, TFRCTL y SBMJOB son aristas `call`
 type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
 // partial = hay algún aviso missing_copy | dynamic_call | unresolved_call | alter | goto_depending; reasons = esos avisos
 ```
@@ -133,6 +135,25 @@ Un proveedor se activa con su clave **y** su modelo: `ANTHROPIC_MODEL` vale `cla
 `OPENAI_MODEL`, `GEMINI_MODEL` y `OPENROUTER_MODEL` son obligatorios para no fijar en el código nombres de modelo que caducan.
 OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con base `https://openrouter.ai/api`, la clave
 `OPENROUTER_API_KEY`, modelos con prefijo de proveedor (`openai/…`, `anthropic/…`) y la cabecera `X-Title: Legacy Code Navigator`.
+
+### Contrato de CL (IBM i)
+
+Un archivo `.clp`, `.clle` o `.cl` (o un `.txt` con `PGM` y `ENDPGM`) es un programa CL. Se analiza con el paquete
+`cl/` y entra en el mismo índice que COBOL:
+
+- **Programa**: el id es el nombre del archivo sin extensión, en mayúsculas (el nombre del objeto en IBM i). Las etiquetas
+  `LABEL:` son bloques (`paragraph` en `symbols` y en el grafo); las sentencias previas a la primera etiqueta pertenecen
+  al programa (las aristas salen del nodo del programa y, como evidencia, forman un bloque con el nombre del programa).
+- **Símbolos**: variables (`&NOMBRE`, con el `&`), etiquetas, archivos declarados con `DCLF`.
+- **Referencias**: `CHGVAR` y `RTV*` escriben `&X`; el resto de usos de `&X` leen. `OVRDBF`, `DLTOVR`, `DCLF`, `RCVF` y
+  `SNDRCVF` son `io` sobre el nombre del archivo; en `OVRDBF` el `detail` es el destino (`LIB/ARCHIVO`).
+- **Aristas**: `CALL`, `CALLPRC`, `TFRCTL` y `SBMJOB CMD(CALL ...)` son `call` (biblioteca quitada del destino);
+  `SBMJOB` con `async: true`. `GOTO` y `MONMSG ... EXEC(GOTO ...)` son `goto` entre etiquetas.
+- **Avisos**: `CALL PGM(&VAR)` es `dynamic_call`; un destino no cargado es `unresolved_call`. Un CALL entre CL y COBOL
+  se resuelve por nombre en los dos sentidos.
+- **Almacén**: `programs.language` (`cobol` | `cl`), `refs.detail` y `edges.async`, con `ALTER TABLE ... ADD COLUMN`
+  protegido para que las bases antiguas sigan funcionando. El `language` de un archivo se deduce de sus programas;
+  sin programas y sin aviso `not_cobol` es `copybook`.
 
 ## Módulos del servidor
 
