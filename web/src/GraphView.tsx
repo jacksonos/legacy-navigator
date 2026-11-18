@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { Graph, GraphNode, GraphQuery } from './api'
 import { useT } from './i18n'
 
-const esc = (s: string) => s.replace(/[#"<>&]/g, (c) => `#${c.charCodeAt(0)};`)
+const esc = (s: string) => s.replace(/[#"<>&$]/g, (c) => `#${c.charCodeAt(0)};`)
 
 /** Builds the Mermaid source; `byMermaidId` maps generated ids (n0, n1…) back to nodes. */
 function toMermaid(g: Graph) {
