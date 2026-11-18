@@ -35,7 +35,7 @@ see the PERFORM / CALL map — flagged as **partial** whenever a dependency can'
 ```bash
 cp .env.example .env        # optional: add one AI provider key + model
 docker compose up -d --build
-# open http://localhost:8080 and click "Use samples"
+# open http://localhost:8080 and click "Use samples" or "Large demo"
 ```
 
 Or without compose:
