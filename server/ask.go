@@ -337,18 +337,24 @@ func fileDecls(db *sql.DB, project string, lines map[string][]string, has map[st
 		for end < len(ls) && end < line+5 && !strings.HasSuffix(strings.TrimSpace(ls[end-1]), ".") {
 			end++
 		}
-		out = append(out, cand{file: file, name: "FILE-CONTROL", start: line, end: end, decl: true})
+		out = append(out, cand{file: file, name: declFileControl, start: line, end: end, decl: true})
 		if !done[file] {
 			done[file] = true
 			for i, l := range ls {
 				if f := strings.Fields(l); len(f) > 1 && f[0] == "FD" && i+2 <= len(ls) {
-					out = append(out, cand{file: file, name: "FILE SECTION", start: i + 1, end: i + 2, decl: true})
+					out = append(out, cand{file: file, name: declFileSection, start: i + 1, end: i + 2, decl: true})
 				}
 			}
 		}
 	}
 	return out, rows.Err()
 }
+
+// File declaration evidence labels; web/src/AskPanel.tsx hides "Show in map" for them (not graph nodes).
+const (
+	declFileControl = "FILE-CONTROL"
+	declFileSection = "FILE SECTION"
+)
 
 // paraName is the paragraph label of a candidate; data snippets have none.
 func paraName(c cand) string {
