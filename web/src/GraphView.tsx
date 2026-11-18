@@ -10,7 +10,7 @@ function toMermaid(g: Graph) {
   g.nodes.forEach((n, i) => ids.set(n.id, `n${i}`))
   const hot = new Set<string>(g.node && ids.has(g.node) ? [g.node] : []) // focus center
   const out = ['flowchart LR']
-  const def = (n: GraphNode) => `${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind}`
+  const def = (n: GraphNode) => `${ids.get(n.id)}["${esc(n.label)}"]:::${n.kind === 'program' && n.language === 'cl' ? 'clprogram' : n.kind}`
   const progOf = (n: GraphNode) =>
     n.kind === 'program' ? n.id : n.kind === 'section' || n.kind === 'paragraph' ? n.id.split(':')[0] : ''
   // one subgraph per program, derived from the node ids (the program node itself may be absent); system view: none
@@ -28,7 +28,8 @@ function toMermaid(g: Graph) {
   g.nodes.filter((n) => g.view === 'system' || !progOf(n)).forEach((n) => out.push(def(n)))
   g.edges.forEach((e) => {
     const a = ids.get(e.from), b = ids.get(e.to)
-    if (e.kind === 'call' && !e.uncertain) out.push(`${a} ==> ${b}`)
+    if (e.async) out.push(`${a} -. "SBMJOB" .-> ${b}`)
+    else if (e.kind === 'call' && !e.uncertain) out.push(`${a} ==> ${b}`)
     else {
       const label = e.kind === 'goto' ? (e.uncertain ? 'goto ?' : 'goto') : e.uncertain ? (e.kind === 'call' ? 'call ?' : '?') : ''
       out.push(label ? `${a} -. "${label}" .-> ${b}` : `${a} --> ${b}`)
@@ -36,6 +37,7 @@ function toMermaid(g: Graph) {
   })
   out.push(
     'classDef program fill:#1d4ed8,stroke:#1e3a8a,color:#fff',
+    'classDef clprogram fill:#0f766e,stroke:#134e4a,color:#fff',
     'classDef section fill:#7c3aed,stroke:#4c1d95,color:#fff',
     'classDef external fill:#9a3412,stroke:#7c2d12,color:#fff',
     'classDef dynamic fill:#6b7280,stroke:#374151,color:#fff',
@@ -162,7 +164,8 @@ export function Legend() {
   const t = useT()
   return (
     <p className="legend muted">
-      {t('legend')}: <span>── {t('legend.perform')}</span> <span>┄ {t('legend.goto')}</span> <span>━ {t('legend.call')}</span>{' '}
+      {t('legend')}: <span>── {t('legend.perform')}</span> <span>┄ {t('legend.goto')}</span> <span>━ {t('legend.call')}</span> <span>┄ SBMJOB</span>{' '}
+      <span><i className="swatch-cl" aria-hidden="true" /> {t('legend.clprogram')}</span>{' '}
       <span>┄ ? {t('legend.uncertain')}</span> <span className="unres">▭ {t('legend.unresolved')}</span>
     </p>
   )

@@ -1,16 +1,16 @@
 export type Warning = { kind: string; detail: string; file: string; line: number }
-export type FileSummary = { name: string; lines: number; programId: string; programIds: string[]; paragraphs: number; dataItems: number; warnings: Warning[] }
+export type FileSummary = { name: string; lines: number; language: 'cobol' | 'cl' | 'copybook'; programId: string; programIds: string[]; paragraphs: number; dataItems: number; warnings: Warning[] }
 export type Project = { id: string; files: FileSummary[]; warnings: Warning[] }
-export type Ref = { kind: 'read' | 'write' | 'io'; file: string; line: number; paragraph: string; program: string }
+export type Ref = { kind: 'read' | 'write' | 'io'; file: string; line: number; paragraph: string; program: string; detail?: string }
 export type SymbolHit = { name: string; kind: string; program: string; def: { file: string; line: number }; refs: Ref[] }
 export type LineHit = { file: string; line: number; text: string }
 export type SearchResult = { results: SymbolHit[]; lines: LineHit[] }
 
 export type GraphNode = {
-  id: string; label: string; kind: 'program' | 'section' | 'paragraph' | 'external' | 'dynamic'
+  id: string; label: string; kind: 'program' | 'section' | 'paragraph' | 'external' | 'dynamic'; language: 'cobol' | 'cl' | ''
   file: string; line: number; resolved: boolean
 }
-export type GraphEdge = { from: string; to: string; kind: 'perform' | 'goto' | 'call'; file: string; line: number; uncertain: boolean }
+export type GraphEdge = { from: string; to: string; kind: 'perform' | 'goto' | 'call'; file: string; line: number; uncertain: boolean; async: boolean }
 export type GraphQuery = { view?: 'system' | 'program' | 'focus'; program?: string; node?: string; depth?: number }
 export type Graph = {
   view: 'system' | 'program' | 'focus'; program: string; node: string; depth: number; programs: string[]

@@ -13,7 +13,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/jacksonos/legacy-navigator/server/cobol"
 	"github.com/jacksonos/legacy-navigator/server/llm"
 )
 
@@ -60,7 +59,7 @@ func (a *api) register(mux *http.ServeMux) {
 
 func validExt(name string) bool {
 	switch strings.ToLower(path.Ext(name)) {
-	case ".cbl", ".cob", ".cpy", ".txt":
+	case ".cbl", ".cob", ".cpy", ".txt", ".clp", ".clle", ".cl":
 		return true
 	}
 	return false
@@ -150,7 +149,7 @@ func (a *api) create(w http.ResponseWriter, r *http.Request) {
 	b := make([]byte, 8)
 	rand.Read(b)
 	id := hex.EncodeToString(b)
-	if err := saveProject(a.db, id, files, cobol.Analyze(files)); err != nil {
+	if err := saveProject(a.db, id, files, analyze(files)); err != nil {
 		serverError(w, err)
 		return
 	}
@@ -195,7 +194,8 @@ type Ref struct {
 	File      string `json:"file"`
 	Line      int    `json:"line"`
 	Paragraph string `json:"paragraph"`
-	Program   string `json:"program"` // PROGRAM-ID containing the line
+	Program   string `json:"program"`          // PROGRAM-ID containing the line
+	Detail    string `json:"detail,omitempty"` // CL: OVRDBF target LIB/FILE
 }
 type Def struct {
 	File string `json:"file"`
@@ -271,7 +271,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 	// ponytail: refs are matched by name only (not by qualifier); one query per hit, at most 50.
 	for i := range res.Results {
 		s := &res.Results[i]
-		rr, err := a.db.Query(`SELECT kind, file, line, paragraph FROM refs
+		rr, err := a.db.Query(`SELECT kind, file, line, paragraph, detail FROM refs
 			WHERE project=? AND name=? AND kind IN ('read','write','io') ORDER BY file, line, kind`, id, s.Name)
 		if err != nil {
 			serverError(w, err)
@@ -279,7 +279,7 @@ func (a *api) search(w http.ResponseWriter, r *http.Request) {
 		}
 		for rr.Next() {
 			var x Ref
-			if err := rr.Scan(&x.Kind, &x.File, &x.Line, &x.Paragraph); err != nil {
+			if err := rr.Scan(&x.Kind, &x.File, &x.Line, &x.Paragraph, &x.Detail); err != nil {
 				rr.Close()
 				serverError(w, err)
 				return

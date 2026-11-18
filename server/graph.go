@@ -16,6 +16,7 @@ type GraphNode struct {
 	ID       string `json:"id"`
 	Label    string `json:"label"`
 	Kind     string `json:"kind"`
+	Language string `json:"language"` // cobol | cl | "" (external, dynamic)
 	File     string `json:"file"`
 	Line     int    `json:"line"`
 	Resolved bool   `json:"resolved"`
@@ -27,6 +28,7 @@ type GraphEdge struct {
 	File      string `json:"file"`
 	Line      int    `json:"line"`
 	Uncertain bool   `json:"uncertain"`
+	Async     bool   `json:"async"` // SBMJOB
 }
 type Graph struct {
 	View     string      `json:"view"`
@@ -74,14 +76,15 @@ func buildGraph(db *sql.DB, id string) (Graph, error) {
 	}
 	rows.Close()
 	for _, s := range syms {
+		r, _ := ix.rangeAt(s.file, s.line)
 		if s.kind == "program" {
-			add(GraphNode{s.name, s.name, "program", s.file, s.line, true})
-		} else if p := ix.at(s.file, s.line); p != "" {
-			add(GraphNode{p + ":" + s.name, s.name, s.kind, s.file, s.line, true})
+			add(GraphNode{s.name, s.name, "program", r.lang, s.file, s.line, true})
+		} else if r.name != "" {
+			add(GraphNode{r.name + ":" + s.name, s.name, s.kind, r.lang, s.file, s.line, true})
 		}
 	}
 
-	rows, err = db.Query(`SELECT from_name, to_name, kind, file, line, uncertain, dynamic FROM edges WHERE project=? ORDER BY file, line, rowid`, id)
+	rows, err = db.Query(`SELECT from_name, to_name, kind, file, line, uncertain, dynamic, async FROM edges WHERE project=? ORDER BY file, line, rowid`, id)
 	if err != nil {
 		return g, err
 	}
@@ -91,7 +94,7 @@ func buildGraph(db *sql.DB, id string) (Graph, error) {
 		var from, to string
 		var e GraphEdge
 		var dyn bool
-		if err := rows.Scan(&from, &to, &e.Kind, &e.File, &e.Line, &e.Uncertain, &dyn); err != nil {
+		if err := rows.Scan(&from, &to, &e.Kind, &e.File, &e.Line, &e.Uncertain, &dyn, &e.Async); err != nil {
 			return g, err
 		}
 		p := ix.at(e.File, e.Line)
@@ -105,12 +108,12 @@ func buildGraph(db *sql.DB, id string) (Graph, error) {
 		switch {
 		case dyn:
 			e.To = fmt.Sprintf("dyn:%s:%d", e.File, e.Line)
-			add(GraphNode{e.To, "?", "dynamic", e.File, e.Line, false})
+			add(GraphNode{e.To, "?", "dynamic", "", e.File, e.Line, false})
 		case e.Kind == "call":
 			e.To = to
 			if !have[to] {
 				e.To = "ext:" + to
-				add(GraphNode{e.To, to, "external", "", 0, false})
+				add(GraphNode{e.To, to, "external", "", "", 0, false})
 			}
 		default:
 			e.To = p + ":" + to
@@ -159,15 +162,18 @@ func systemView(g Graph) Graph {
 		keep[n.ID] = n.Kind == "program" || n.Kind == "external" || n.Kind == "dynamic"
 	}
 	type pair struct{ from, to string }
-	seen := map[pair]bool{}
+	seen := map[pair]int{}
 	var edges []GraphEdge
 	for _, e := range g.Edges {
 		if e.Kind != "call" {
 			continue
 		}
 		e.From = progOf(e.From)
-		if k := (pair{e.From, e.To}); !seen[k] && keep[e.From] && keep[e.To] {
-			seen[k] = true
+		k := pair{e.From, e.To}
+		if i, ok := seen[k]; ok {
+			edges[i].Async = edges[i].Async && e.Async // async only if every call is
+		} else if keep[e.From] && keep[e.To] {
+			seen[k] = len(edges)
 			edges = append(edges, e)
 		}
 	}

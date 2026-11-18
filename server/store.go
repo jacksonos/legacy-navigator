@@ -18,11 +18,11 @@ CREATE TABLE IF NOT EXISTS projects(id TEXT PRIMARY KEY, created_at TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS files(project TEXT NOT NULL, name TEXT NOT NULL, content TEXT NOT NULL, PRIMARY KEY(project, name));
 CREATE TABLE IF NOT EXISTS symbols(project TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS symbols_project ON symbols(project, name);
-CREATE TABLE IF NOT EXISTS refs(project TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, paragraph TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS refs(project TEXT NOT NULL, name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, paragraph TEXT NOT NULL, detail TEXT NOT NULL DEFAULT '');
 CREATE INDEX IF NOT EXISTS refs_project ON refs(project, name);
-CREATE TABLE IF NOT EXISTS edges(project TEXT NOT NULL, from_name TEXT NOT NULL, to_name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, uncertain INTEGER NOT NULL, dynamic INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS edges(project TEXT NOT NULL, from_name TEXT NOT NULL, to_name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, uncertain INTEGER NOT NULL, dynamic INTEGER NOT NULL, async INTEGER NOT NULL DEFAULT 0);
 CREATE INDEX IF NOT EXISTS edges_project ON edges(project);
-CREATE TABLE IF NOT EXISTS programs(project TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS programs(project TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, language TEXT NOT NULL DEFAULT 'cobol');
 CREATE INDEX IF NOT EXISTS programs_project ON programs(project);
 CREATE TABLE IF NOT EXISTS warnings(project TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, program_file TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS warnings_project ON warnings(project);
@@ -45,14 +45,30 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// Databases created before CL support lack these columns.
+	for _, c := range [][3]string{
+		{"programs", "language", "TEXT NOT NULL DEFAULT 'cobol'"},
+		{"refs", "detail", "TEXT NOT NULL DEFAULT ''"},
+		{"edges", "async", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		var n int
+		err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c[0], c[1]).Scan(&n)
+		if err == nil && n == 0 {
+			_, err = db.Exec(`ALTER TABLE ` + c[0] + ` ADD COLUMN ` + c[1] + ` ` + c[2])
+		}
+		if err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
 	return db, nil
 }
 
 // progRange is the line range of one program inside a file; contained programs
 // lie inside their parent's range.
 type progRange struct {
-	name, file string
-	start, end int
+	name, file, lang string
+	start, end       int
 }
 
 // progIndex maps (file, line) to the PROGRAM-ID containing it, so Ref, SymbolHit,
@@ -61,13 +77,13 @@ type progIndex []progRange
 
 func loadProgIndex(db *sql.DB, id string) (progIndex, error) {
 	var ix progIndex
-	rows, err := db.Query(`SELECT name, file, start_line, end_line FROM programs WHERE project=? ORDER BY file, start_line`, id)
+	rows, err := db.Query(`SELECT name, file, start_line, end_line, language FROM programs WHERE project=? ORDER BY file, start_line`, id)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var r progRange
-		if err := rows.Scan(&r.name, &r.file, &r.start, &r.end); err != nil {
+		if err := rows.Scan(&r.name, &r.file, &r.start, &r.end, &r.lang); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -84,7 +100,7 @@ func loadProgIndex(db *sql.DB, id string) (progIndex, error) {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var r progRange
+		r := progRange{lang: "cobol"}
 		if err := rows.Scan(&r.name, &r.file, &r.start); err != nil {
 			return nil, err
 		}
@@ -152,7 +168,7 @@ func saveProject(db *sql.DB, id string, files map[string]string, proj *cobol.Pro
 	}
 	for _, p := range proj.Programs {
 		sym(p.ID, "program", p.File, p.IDLine)
-		exec(`INSERT INTO programs VALUES(?,?,?,?,?)`, id, p.ID, p.File, p.StartLine, p.EndLine)
+		exec(`INSERT INTO programs VALUES(?,?,?,?,?,?)`, id, p.ID, p.File, p.StartLine, p.EndLine, language(p))
 		for _, d := range p.Data {
 			sym(d.Name, "data", d.Loc.File, d.Loc.Line)
 		}
@@ -171,10 +187,10 @@ func saveProject(db *sql.DB, id string, files map[string]string, proj *cobol.Pro
 				continue
 			}
 			seen[k] = true
-			exec(`INSERT INTO refs VALUES(?,?,?,?,?,?)`, id, r.Name, r.Kind, r.Loc.File, r.Loc.Line, r.Paragraph)
+			exec(`INSERT INTO refs VALUES(?,?,?,?,?,?,?)`, id, r.Name, r.Kind, r.Loc.File, r.Loc.Line, r.Paragraph, r.Detail)
 		}
 		for _, e := range p.Edges {
-			exec(`INSERT INTO edges VALUES(?,?,?,?,?,?,?,?)`, id, e.From, e.To, e.Kind, e.Loc.File, e.Loc.Line, e.Uncertain, e.Dynamic)
+			exec(`INSERT INTO edges VALUES(?,?,?,?,?,?,?,?,?)`, id, e.From, e.To, e.Kind, e.Loc.File, e.Loc.Line, e.Uncertain, e.Dynamic, e.Async)
 		}
 		for _, w := range p.Warnings {
 			warn(w, p.File)
@@ -184,6 +200,13 @@ func saveProject(db *sql.DB, id string, files map[string]string, proj *cobol.Pro
 		return err
 	}
 	return tx.Commit()
+}
+
+func language(p cobol.Program) string {
+	if p.Language == "cl" {
+		return "cl"
+	}
+	return "cobol"
 }
 
 func splitLines(s string) []string {
@@ -207,6 +230,7 @@ type Warning struct {
 type FileSummary struct {
 	Name       string    `json:"name"`
 	Lines      int       `json:"lines"`
+	Language   string    `json:"language"`   // cobol | cl | copybook
 	ProgramID  string    `json:"programId"`  // the first program of the file
 	ProgramIDs []string  `json:"programIds"` // all of them, in order
 	Paragraphs int       `json:"paragraphs"`
@@ -269,6 +293,9 @@ func loadProject(db *sql.DB, id string) (Project, error) {
 				f.ProgramID = r.name
 			}
 			f.ProgramIDs = append(f.ProgramIDs, r.name)
+			if f.Language == "" {
+				f.Language = r.lang
+			}
 		}
 	}
 	rows, err = db.Query(`SELECT DISTINCT kind, detail, file, line FROM warnings WHERE project=? ORDER BY file, line, kind`, id)
@@ -283,11 +310,22 @@ func loadProject(db *sql.DB, id string) (Project, error) {
 		}
 		if f := byFile[w.File]; f != nil {
 			f.Warnings = append(f.Warnings, w)
+			if w.Kind == "not_cobol" {
+				f.Language = "cobol"
+			}
 		} else {
 			out.Warnings = append(out.Warnings, w)
 		}
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	for i := range out.Files {
+		if f := &out.Files[i]; f.Language == "" {
+			f.Language = "copybook" // no program and not flagged not_cobol: a copybook
+		}
+	}
+	return out, nil
 }
 
 // deleteExpired removes projects older than ttl with all their rows; ttl <= 0 disables expiry.

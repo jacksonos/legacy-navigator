@@ -40,6 +40,7 @@ exist in the code before showing it.
 | **Four LLM providers** | Anthropic, OpenAI, Gemini and OpenRouter over plain HTTP, no SDKs. Pick one per question. |
 | **Question to symbols** | With a provider, the question is first mapped to up to 15 symbol names that are validated against the index, so "balance" can find `WS-SALDO`. |
 | **Scalable call map** | System, program and focus views, capped at 300 edges. Anything cut or unresolved is declared as a **partial map**. |
+| **IBM i CL** | `.clp`, `.clle` and `.cl` programs are the batch entry points: `CALL`, `SBMJOB` (dashed async edge), `TFRCTL` and `GOTO` join the call map, and `OVRDBF` shows up as an I/O reference (with its `LIB/FILE` target) on the COBOL file name. CL and COBOL calls resolve by name in both directions. |
 | **COBOL coverage** | Fixed and free format, `COPY … REPLACING`, several programs per file (consecutive or nested), every COBOL verb classified as read, write or I/O. |
 | **Symbol search** | Data items, paragraphs, sections, files and programs, with references classified as write, read or I/O, plus FTS5 full-text over lines and comments. |
 | **EN / ES interface** | Language follows the browser and is remembered. |
@@ -74,7 +75,7 @@ docker run -p 8080:8080 -v navigator-data:/data -e ANTHROPIC_API_KEY=... legacy-
 ```
 
 **Use samples** loads a small program with copybooks (one dynamic `CALL`, one missing `COPY`). **Large demo** loads a
-12-program banking system (8 copybooks, 3 045 lines) to try the map views. Without any provider key the app runs in
+banking system (12 COBOL programs, the nightly CL job `CIERREDIA.clp`, 8 copybooks, 3 102 lines) to try the map views. Without any provider key the app runs in
 evidence-only mode.
 
 ## Configuration
@@ -130,7 +131,7 @@ the UI. Design decisions and contracts: [docs/03-arquitectura.md](docs/03-arquit
 
 | Method and path | Purpose |
 |---|---|
-| `POST /api/projects` | Upload files (multipart); `?samples=1` or `?samples=large` loads the bundled demos |
+| `POST /api/projects` | Upload files (multipart; `.cbl` `.cob` `.cpy` `.txt` `.clp` `.clle` `.cl`); `?samples=1` or `?samples=large` loads the bundled demos |
 | `GET /api/projects/{id}` | Per-file summary and project warnings |
 | `GET /api/projects/{id}/files/{name}` | Source lines of a file |
 | `GET /api/projects/{id}/search?q=&kind=` | Symbols with definition and classified references, plus line matches |
@@ -146,6 +147,7 @@ JSON contracts: [docs/03-arquitectura.md](docs/03-arquitectura.md#api).
 ```
 server/                 Go module (net/http, no framework)
   cobol/                normalizer, COPY expansion, parser
+  cl/                   IBM i Control Language parser
   llm/                  Anthropic, OpenAI, Gemini, OpenRouter clients
   samples/              small demo (embedded)
   samples-large/        large banking demo (embedded)
@@ -186,6 +188,7 @@ The same list is shown in the app (**Limitations** in the header).
 - The map is partial when calls or copybooks cannot be resolved.
 - Only the selected code snippets are sent to the AI provider.
 - Projects are deleted automatically after 7 days (configurable with `PROJECT_TTL`). There are no per-user quotas or rate limits.
+- CL (IBM i): commands are read as text, not executed. User-defined commands (`*CMD`), `CALLPRC` procedures and the fields of `DCLF` files (DDS) are not followed; `CALL` resolves by program name, ignoring the library.
 
 ## Roadmap
 

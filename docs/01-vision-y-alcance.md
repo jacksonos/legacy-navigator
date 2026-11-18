@@ -9,7 +9,7 @@ tiempo: es tocar algo sin ver qué más depende de ello.
 
 ## Propuesta
 
-Un explorador web donde el usuario carga uno o varios fuentes COBOL (y sus copybooks) y:
+Un explorador web donde el usuario carga uno o varios fuentes COBOL y CL de IBM i (y sus copybooks) y:
 
 1. Busca por símbolo (dato, párrafo, sección, archivo, programa llamado).
 2. Pregunta en lenguaje natural («¿Dónde se calcula el saldo y qué archivos intervienen?»)
@@ -28,6 +28,7 @@ y necesita entenderlo antes de tocarlo.
 | Incluido | Fuera de alcance |
 |---|---|
 | Carga de archivos `.cbl`, `.cob`, `.cpy` y `.txt`, en formato fijo o libre | Conexión a AS/400, mainframe o repositorios reales |
+| **IBM i CL**: programas `.clp`, `.clle` y `.cl` (o `.txt` con `PGM`/`ENDPGM`), que son la entrada del batch: `CALL`, `SBMJOB`, `TFRCTL`, `OVRDBF` y `GOTO` entran en el mapa y en la búsqueda | DDS (los campos de los archivos de `DCLF`), RPG y comandos propios (`*CMD`) |
 | Preguntas con Claude, OpenAI, Gemini u OpenRouter (a elegir) | Autenticación de usuarios |
 | UI en inglés y español | Otros idiomas |
 | Despliegue con Docker | Kubernetes, alta disponibilidad |
@@ -38,7 +39,7 @@ y necesita entenderlo antes de tocarlo.
 | Pregunta en lenguaje natural con respuesta citada; con proveedor, la pregunta se asigna antes a símbolos del índice | Edición de código o refactorización asistida |
 | Grafo de llamadas PERFORM (interno) y CALL (externo), con vistas sistema, programa y foco (tope de 300 aristas) | Análisis de JCL, CICS, DB2 embebido (`EXEC SQL` se muestra como bloque opaco) |
 | Aviso de mapa parcial con lista de lo no resuelto | Cuotas por usuario y límite de peticiones |
-| Ejemplos incluidos en el repo: uno pequeño (4 archivos) y una demo grande (12 programas, 8 copybooks, 3 045 líneas) | |
+| Ejemplos incluidos en el repo: uno pequeño (4 archivos) y una demo grande (12 programas COBOL, 1 programa CL, 8 copybooks, 3 102 líneas) | |
 | Los proyectos caducan solos (`PROJECT_TTL`, 7 días por defecto) | |
 
 ## Criterios de éxito

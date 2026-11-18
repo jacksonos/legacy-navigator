@@ -572,9 +572,9 @@ func (ps *parser) ref(t Token, para, mode string, depth *int) {
 		if *depth > 0 {
 			m = "read"
 		}
-		ps.p.Refs = append(ps.p.Refs, Ref{c, m, t.Loc, para})
+		ps.p.Refs = append(ps.p.Refs, Ref{c, m, t.Loc, para, ""})
 		if f, ok := ps.recFile[c]; ok && m == "io" {
-			ps.p.Refs = append(ps.p.Refs, Ref{f, "io", t.Loc, para})
+			ps.p.Refs = append(ps.p.Refs, Ref{f, "io", t.Loc, para, ""})
 		}
 	}
 	for _, r := range t.Text {

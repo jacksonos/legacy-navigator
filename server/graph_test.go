@@ -14,27 +14,27 @@ func scaleGraph() Graph {
 	const progs, paras = 50, 500
 	for p := 0; p < progs; p++ {
 		pn := fmt.Sprintf("P%02d", p)
-		g.Nodes = append(g.Nodes, GraphNode{pn, pn, "program", pn + ".cbl", 1, true})
+		g.Nodes = append(g.Nodes, GraphNode{pn, pn, "program", "cobol", pn + ".cbl", 1, true})
 		for i := 0; i < paras; i++ {
-			g.Nodes = append(g.Nodes, GraphNode{fmt.Sprintf("%s:PAR-%03d", pn, i), fmt.Sprintf("PAR-%03d", i), "paragraph", pn + ".cbl", 10 + i, true})
+			g.Nodes = append(g.Nodes, GraphNode{fmt.Sprintf("%s:PAR-%03d", pn, i), fmt.Sprintf("PAR-%03d", i), "paragraph", "cobol", pn + ".cbl", 10 + i, true})
 		}
 	}
 	for _, x := range []string{"EXT1", "EXT2", "EXT3"} {
-		g.Nodes = append(g.Nodes, GraphNode{"ext:" + x, x, "external", "", 0, false})
+		g.Nodes = append(g.Nodes, GraphNode{"ext:" + x, x, "external", "", "", 0, false})
 	}
 	for p := 0; p < progs; p++ {
 		pn := fmt.Sprintf("P%02d", p)
 		for i := 0; i < paras; i++ {
 			from := fmt.Sprintf("%s:PAR-%03d", pn, i)
 			for d := 1; d <= 2 && i+d < paras; d++ {
-				g.Edges = append(g.Edges, GraphEdge{from, fmt.Sprintf("%s:PAR-%03d", pn, i+d), "perform", pn + ".cbl", 10 + i, false})
+				g.Edges = append(g.Edges, GraphEdge{from, fmt.Sprintf("%s:PAR-%03d", pn, i+d), "perform", pn + ".cbl", 10 + i, false, false})
 			}
 			if i%25 == 0 {
 				to := fmt.Sprintf("P%02d", (p+1+i/25)%progs)
 				if i%250 == 0 {
 					to = "ext:EXT1"
 				}
-				g.Edges = append(g.Edges, GraphEdge{from, to, "call", pn + ".cbl", 10 + i, false})
+				g.Edges = append(g.Edges, GraphEdge{from, to, "call", pn + ".cbl", 10 + i, false, false})
 			}
 		}
 	}
@@ -103,11 +103,11 @@ func TestGraphViewsAtScale(t *testing.T) {
 }
 
 func TestFocusDepthShrinksAndTruncates(t *testing.T) {
-	g := Graph{Nodes: []GraphNode{{"HUB", "HUB", "program", "H.cbl", 1, true}}}
+	g := Graph{Nodes: []GraphNode{{"HUB", "HUB", "program", "cobol", "H.cbl", 1, true}}}
 	for i := 0; i < 400; i++ { // hub with 400 leaves: depth 1 itself exceeds the cap
 		id := fmt.Sprintf("L%03d", i)
-		g.Nodes = append(g.Nodes, GraphNode{id, id, "program", "L.cbl", i, true})
-		g.Edges = append(g.Edges, GraphEdge{"HUB", id, "call", "H.cbl", i, false})
+		g.Nodes = append(g.Nodes, GraphNode{id, id, "program", "cobol", "L.cbl", i, true})
+		g.Edges = append(g.Edges, GraphEdge{"HUB", id, "call", "H.cbl", i, false, false})
 	}
 	v := makeView(g, "focus", "", "HUB", 3)
 	if v.Depth != 1 || len(v.Edges) != maxGraphEdges || v.node("HUB") == nil || len(v.Nodes) != maxGraphEdges+1 {

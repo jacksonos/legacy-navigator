@@ -6,9 +6,10 @@
 ┌──────────────────────┐   JSON/HTTP   ┌─────────────────────────────────────────┐
 │ web/ React+TS+Vite   │ ────────────► │ server/ Go (net/http)                   │
 │  carga · búsqueda    │               │  cobol/  normaliza · COPY · parsea       │
-│  visor · grafo       │ ◄──────────── │  SQLite + FTS5  (símbolos, refs, líneas) │
-│  (Mermaid) · i18n    │               │  ask     recupera → LLM → valida citas   │
-└──────────────────────┘               │  llm/    anthropic | openai | gemini |   │
+│  visor · grafo       │ ◄──────────── │  cl/     parsea CL de IBM i              │
+│  (Mermaid) · i18n    │               │  SQLite + FTS5  (símbolos, refs, líneas) │
+└──────────────────────┘               │  ask     recupera → LLM → valida citas   │
+                                       │  llm/    anthropic | openai | gemini |   │
                                        │          openrouter                      │
                                        └─────────────────────────────────────────┘
         Un único binario Go sirve la API y el build de web/ (embed) → una imagen Docker
@@ -32,7 +33,7 @@
 
 | Método y ruta | Qué hace |
 |---|---|
-| `POST /api/projects` | Sube los archivos (multipart) y devuelve `{id, resumen, avisos}`. Con `?samples=1` carga los ejemplos pequeños y con `?samples=large` la demo grande |
+| `POST /api/projects` | Sube los archivos (multipart; `.cbl`, `.cob`, `.cpy`, `.txt`, `.clp`, `.clle`, `.cl`) y devuelve `{id, resumen, avisos}`. Con `?samples=1` carga los ejemplos pequeños y con `?samples=large` la demo grande |
 | `GET /api/projects/{id}` | Resumen por archivo y avisos de mapa parcial |
 | `GET /api/projects/{id}/files/{name}` | Fuente con números de línea |
 | `GET /api/projects/{id}/search?q=&kind=` | Símbolos con su definición y sus referencias clasificadas |
@@ -46,14 +47,14 @@ Las claves de los LLM solo viven en el servidor, en variables de entorno. El nav
 
 ```ts
 type Warning = { kind: string; detail: string; file: string; line: number }   // file/line pueden ir vacíos/0
-type FileSummary = { name: string; lines: number; programId: string /* el primero */; programIds: string[] /* todos los del archivo */; paragraphs: number; dataItems: number; warnings: Warning[] }
+type FileSummary = { name: string; lines: number; language: "cobol" | "cl" | "copybook"; programId: string /* el primero */; programIds: string[] /* todos los del archivo */; paragraphs: number; dataItems: number; warnings: Warning[] }
 type Project = { id: string; files: FileSummary[]; warnings: Warning[] }      // warnings = nivel proyecto
 
 // POST /api/projects (multipart, campo "files" repetido) | POST /api/projects?samples=1|large   → 201 Project
 // GET  /api/projects/{id}                                                                → 200 Project
 // GET  /api/projects/{id}/files/{name}      → 200 { name: string; lines: string[] }      // líneas crudas, índice 0 = línea 1
 // GET  /api/projects/{id}/search?q=&kind=   kind ∈ data|paragraph|section|file|program (opcional)
-type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string; program: string }   // program = PROGRAM-ID que contiene la línea
+type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string; program: string; detail?: string }   // program = PROGRAM-ID que contiene la línea; detail = dato extra (CL: destino de OVRDBF, `LIB/ARCHIVO`)
 type SymbolHit = { name: string; kind: string; program: string /* "" si viene de un copybook */; def: { file: string; line: number }; refs: Ref[] }
 type LineHit = { file: string; line: number; text: string }                    // aciertos FTS5 sobre las líneas
 // → 200 { results: SymbolHit[]; lines: LineHit[] }   (máx. 50 de cada)
@@ -73,10 +74,12 @@ type GraphNode = {
   id: string                      // estable y único: "PROG:PARRAFO", "PROG" (programa), "ext:NOMBRE", "dyn:archivo:línea"
   label: string
   kind: "program" | "section" | "paragraph" | "external" | "dynamic"
+  language: "cobol" | "cl" | ""   // lenguaje del programa que contiene el nodo; "" en external y dynamic
   file: string; line: number      // vacío/0 para external y dynamic sin origen
   resolved: boolean               // false: CALL a programa no cargado o dinámico → borde discontinuo
 }
-type GraphEdge = { from: string; to: string; kind: "perform" | "goto" | "call"; file: string; line: number; uncertain: boolean }
+type GraphEdge = { from: string; to: string; kind: "perform" | "goto" | "call"; file: string; line: number; uncertain: boolean; async: boolean }
+// async = true solo en SBMJOB (un `call` que corre en otro trabajo). En CL, CALL, TFRCTL y SBMJOB son aristas `call`
 type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
 // partial = hay algún aviso missing_copy | dynamic_call | unresolved_call | alter | goto_depending; reasons = esos avisos
 ```
@@ -134,6 +137,25 @@ Un proveedor se activa con su clave **y** su modelo: `ANTHROPIC_MODEL` vale `cla
 OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con base `https://openrouter.ai/api`, la clave
 `OPENROUTER_API_KEY`, modelos con prefijo de proveedor (`openai/…`, `anthropic/…`) y la cabecera `X-Title: Legacy Code Navigator`.
 
+### Contrato de CL (IBM i)
+
+Un archivo `.clp`, `.clle` o `.cl` (o un `.txt` con `PGM` y `ENDPGM`) es un programa CL. Se analiza con el paquete
+`cl/` y entra en el mismo índice que COBOL:
+
+- **Programa**: el id es el nombre del archivo sin extensión, en mayúsculas (el nombre del objeto en IBM i). Las etiquetas
+  `LABEL:` son bloques (`paragraph` en `symbols` y en el grafo); las sentencias previas a la primera etiqueta pertenecen
+  al programa (las aristas salen del nodo del programa y, como evidencia, forman un bloque con el nombre del programa).
+- **Símbolos**: variables (`&NOMBRE`, con el `&`), etiquetas, archivos declarados con `DCLF`.
+- **Referencias**: `CHGVAR` y `RTV*` escriben `&X`; el resto de usos de `&X` leen. `OVRDBF`, `DLTOVR`, `DCLF`, `RCVF` y
+  `SNDRCVF` son `io` sobre el nombre del archivo; en `OVRDBF` el `detail` es el destino (`LIB/ARCHIVO`).
+- **Aristas**: `CALL`, `CALLPRC`, `TFRCTL` y `SBMJOB CMD(CALL ...)` son `call` (biblioteca quitada del destino);
+  `SBMJOB` con `async: true`. `GOTO` y `MONMSG ... EXEC(GOTO ...)` son `goto` entre etiquetas.
+- **Avisos**: `CALL PGM(&VAR)` es `dynamic_call`; un destino no cargado es `unresolved_call`. Un CALL entre CL y COBOL
+  se resuelve por nombre en los dos sentidos.
+- **Almacén**: `programs.language` (`cobol` | `cl`), `refs.detail` y `edges.async`, con `ALTER TABLE ... ADD COLUMN`
+  protegido para que las bases antiguas sigan funcionando. El `language` de un archivo se deduce de sus programas;
+  sin programas y sin aviso `not_cobol` es `copybook`.
+
 ## Módulos del servidor
 
 1. **`cobol/`** (paquete puro, sin E/S; es el núcleo que se prueba):
@@ -162,13 +184,22 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
      `RETURN … INTO`, `DIVIDE … REMAINDER`, `STRING`/`UNSTRING … POINTER|TALLYING`,
      `CALL … RETURNING` y `ACCEPT`. En un subíndice o una modificación de referencia, el nombre base
      toma el modo de la sentencia y los identificadores entre paréntesis son lecturas.
-2. **Almacén (SQLite)**: guarda el resultado del parser.
-   - Tablas: `projects`, `files(project, name, content)`, `symbols`, `refs`, `edges`, `warnings`, `programs(project, name, file, start_line, end_line)`. El programa de una línea (`program` en `Ref`, `SymbolHit` y `Evidence`) se deduce del rango más interno que la contiene; sin fila en `programs` (proyectos antiguos) se cae a las líneas `PROGRAM-ID` de `symbols`.
+2. **`cl/`** (paquete puro, como `cobol/`): `Detect(nombre, contenido)` decide si un archivo es CL (extensión, o `.txt` con
+   `PGM` y `ENDPGM`; es el único sitio donde se decide el lenguaje) y `Analyze` devuelve un `cobol.Project`: reutiliza los
+   tipos `Program`, `Block`, `Ref`, `Edge` y `Warning` de `cobol/` (con los campos nuevos `Program.Language`, `Ref.Detail` y
+   `Edge.Async`), así que almacén, grafo, búsqueda y preguntas no distinguen lenguajes salvo para mostrarlo. El lexer une las
+   líneas (comentarios `/* */` multilínea, continuación `+` que quita los blancos iniciales y `-` que los conserva), separa
+   etiquetas, comandos y parámetros `KWD(valor)` y analiza de forma recursiva los comandos anidados (`SBMJOB CMD(…)`,
+   `IF … THEN(…)`, `ELSE`, `MONMSG … EXEC(…)`). `server/analyze.go` reparte los archivos entre `cobol.Analyze` y `cl.Analyze`
+   y resuelve los `CALL` por nombre entre los programas de los dos lenguajes (sin ello un `CALL` de COBOL a un programa CL
+   saldría como `unresolved_call`).
+3. **Almacén (SQLite)**: guarda el resultado del parser.
+   - Tablas: `projects`, `files(project, name, content)`, `symbols`, `refs(…, detail)`, `edges(…, async)`, `warnings`, `programs(project, name, file, start_line, end_line, language)`. El programa de una línea (`program` en `Ref`, `SymbolHit` y `Evidence`) se deduce del rango más interno que la contiene; sin fila en `programs` (proyectos antiguos) se cae a las líneas `PROGRAM-ID` de `symbols`.
    - `lines_fts` es una tabla virtual FTS5 con `(project UNINDEXED, file UNINDEXED, line UNINDEXED, text)`.
      Incluye los comentarios, que a menudo dicen «calcula saldo».
    - El tokenizador `unicode61` parte los nombres por el guion: `WS-SALDO-FINAL` se encuentra
      buscando `saldo`.
-3. **Recuperación (`ask`)**:
+4. **Recuperación (`ask`)**:
    1. La pregunta se reduce a términos (sin palabras vacías en/es) y se buscan con FTS5 `MATCH`
       sobre las líneas y con `LIKE` sobre los nombres de símbolo.
    2. Se reúnen los párrafos que contienen esos aciertos, los párrafos que **escriben** los símbolos
@@ -180,13 +211,13 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
       máx. 3000). Solo se conservan los nombres que existen en el índice, y se suman a los aciertos
       por término como símbolos acertados. Si la llamada falla, se sigue solo con los términos; sin
       proveedor no hay expansión.
-4. **`llm/`**: la interfaz `Provider { Complete(ctx, system, user) (string, error) }` con cuatro
+5. **`llm/`**: la interfaz `Provider { Complete(ctx, system, user) (string, error) }` con cuatro
    proveedores: Anthropic, OpenAI, Gemini y OpenRouter (este último con el cliente de OpenAI). Se activa
    cada proveedor que tenga clave **y** modelo (`FromEnv`); solo Anthropic tiene un modelo por defecto.
-5. **Validador de citas**: extrae cada `[archivo:línea]` o `[archivo:línea-línea]` y comprueba que
+6. **Validador de citas**: extrae cada `[archivo:línea]` o `[archivo:línea-línea]` y comprueba que
    exista y que caiga dentro de un fragmento enviado. Las citas inválidas pasan a `unverified` y se
    quitan del texto.
-6. **Modo sin IA**: si no hay ningún proveedor configurado, `/ask` devuelve solo la evidencia
+7. **Modo sin IA**: si no hay ningún proveedor configurado, `/ask` devuelve solo la evidencia
    (símbolos, escrituras y archivos de E/S) sin redactar una explicación.
 
 ## Configuración (entorno)
@@ -234,10 +265,11 @@ etiquetas del mapa se escapan para que KaTeX no los interprete.
 | D9 | Vistas acotadas del grafo (sistema, programa, foco) con tope de 300 aristas | Dibujar el grafo completo | Un grafo de miles de nodos no se lee ni se dibuja; el recorte siempre se declara como mapa parcial |
 | D6 | Un binario con el front embebido | Imágenes separadas para front y back | Una sola imagen, sin CORS ni proxy |
 | D7 | `modernc.org/sqlite` | `mattn/go-sqlite3` | Sin cgo: compila igual en Windows, Linux y Docker distroless |
+| D10 | CL como un segundo analizador (`cl/`) que produce los mismos tipos que `cobol/`; el lenguaje se guarda en `programs.language` | Un modelo de datos propio para CL, o deducir el lenguaje de la extensión en cada consulta | En IBM i los CL son las entradas del batch (`SBMJOB`/`CALL` a los COBOL, `OVRDBF` que enlaza los nombres lógicos con los archivos físicos): reutilizar los tipos deja el almacén, el grafo y `ask` sin ramas por lenguaje. Una columna con `ALTER TABLE … ADD COLUMN` protegido es más robusta que la extensión (un `.txt` puede ser CL) y no rompe las bases antiguas |
 
 ## Limitaciones conocidas (se documentan en la UI)
 
-Son las mismas ocho que muestra el botón «Limitaciones» (`limit.1` a `limit.8` en `web/src/i18n.ts`):
+Son las mismas nueve que muestra el botón «Limitaciones» (`limit.1` a `limit.9` en `web/src/i18n.ts`):
 
 1. Se admiten el formato libre y `COPY … REPLACING`; en formato libre, los párrafos deben empezar con sangría menor que 4. En `REPLACING` el pseudotexto se compara por palabras completas (no hay el idioma `:TAG:` parcial).
 2. En modo solo evidencia (sin proveedor), los términos de la pregunta deben aparecer en el código o sus comentarios (p. ej. «balance» no encuentra `WS-SALDO`); con proveedor, la pregunta se asigna antes a símbolos.
@@ -247,3 +279,4 @@ Son las mismas ocho que muestra el botón «Limitaciones» (`limit.1` a `limit.8
 6. El mapa es parcial cuando no se pueden resolver llamadas o copybooks (y cuando una vista se recorta por el tope de aristas).
 7. Solo los fragmentos de código seleccionados se envían al proveedor de IA.
 8. Los proyectos se borran automáticamente a los 7 días (configurable con `PROJECT_TTL`). No hay cuotas por usuario ni límite de peticiones.
+9. CL (IBM i): los comandos se leen como texto, no se ejecutan. No se siguen los comandos propios (`*CMD`), los procedimientos de `CALLPRC` ni los campos de los archivos de `DCLF` (DDS); los `CALL` se resuelven por nombre y sin tener en cuenta la biblioteca.
