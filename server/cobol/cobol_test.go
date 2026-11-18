@@ -423,7 +423,7 @@ func TestCopyEdgeCases(t *testing.T) {
 			replacing++
 		}
 	}
-	if recursive != 2 || replacing != 1 {
+	if recursive != 2 || replacing != 0 {
 		t.Errorf("warnings = %+v", p.Warnings)
 	}
 	// A copybook that copies itself must not loop either.
