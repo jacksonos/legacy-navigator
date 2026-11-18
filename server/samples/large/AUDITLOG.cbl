@@ -1,0 +1,126 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. AUDITLOG.
+      *================================================================
+      * AUDITLOG - RUTINA DE AUDITORIA DEL BATCH BANCARIO
+      * LA LLAMAN TODOS LOS PROGRAMAS DEL PROCESO NOCTURNO PARA DEJAR
+      * CONSTANCIA DE CADA HITO: INICIO, FIN, CUENTAS ACTUALIZADAS,
+      * INTERESES ABONADOS, COMISIONES COBRADAS Y ERRORES DETECTADOS.
+      * EL ARCHIVO DE AUDITORIA SE ABRE UNA SOLA VEZ POR EJECUCION Y
+      * SE AGREGA AL FINAL (EXTEND) PARA CONSERVAR EL HISTORICO.
+      *================================================================
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT AUDITORIA ASSIGN TO 'AUDITORIA.LOG'
+               ORGANIZATION IS LINE SEQUENTIAL
+               FILE STATUS IS WS-FS-AUD.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  AUDITORIA.
+       01  AUD-LINEA               PIC X(100).
+       WORKING-STORAGE SECTION.
+       01  WS-FS-AUD               PIC XX.
+           88  AUD-FS-OK           VALUE '00'.
+       01  WS-ABIERTO              PIC X VALUE 'N'.
+           88  ARCHIVO-ABIERTO     VALUE 'S'.
+       01  WS-CONTADOR-LINEAS      PIC 9(7) VALUE 0.
+       01  WS-LIMITE-LINEAS        PIC 9(7) VALUE 500000.
+       01  WS-TABLA-ACCIONES.
+           05  WS-ACCION-FILA OCCURS 6 TIMES.
+               10  WS-ACC-NOMBRE   PIC X(10).
+               10  WS-ACC-CUENTA   PIC 9(7).
+       01  WS-IDX-ACC              PIC 9.
+       01  WS-ACC-HALLADA          PIC X VALUE 'N'.
+           88  ACCION-REGISTRADA   VALUE 'S'.
+       01  WS-FECHA-SIS            PIC 9(8).
+       01  WS-HORA-SIS             PIC 9(8).
+       01  WS-LINEA-SAL.
+           05  SAL-FECHA           PIC 9(8).
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-HORA            PIC 9(6).
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-PROGRAMA        PIC X(8).
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-ACCION          PIC X(10).
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-CUENTA          PIC 9(10).
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-IMPORTE         PIC -(11)9.99.
+           05  FILLER              PIC X VALUE SPACE.
+           05  SAL-DETALLE         PIC X(40).
+       LINKAGE SECTION.
+           COPY AUDREG.
+       PROCEDURE DIVISION USING AUD-REGISTRO.
+       0000-PRINCIPAL.
+           PERFORM 1000-ABRIR-SI-HACE-FALTA
+           PERFORM 2000-SELLO-DE-TIEMPO
+           PERFORM 3000-ESCRIBIR-LINEA
+           PERFORM 4000-CONTAR-ACCION
+           PERFORM 5000-CONTROLAR-TAMANO
+           GOBACK.
+      * LA PRIMERA LLAMADA ABRE EL ARCHIVO DE AUDITORIA EN EXTEND
+       1000-ABRIR-SI-HACE-FALTA.
+           IF NOT ARCHIVO-ABIERTO
+               OPEN EXTEND AUDITORIA
+               IF NOT AUD-FS-OK
+                   OPEN OUTPUT AUDITORIA
+               END-IF
+               SET ARCHIVO-ABIERTO TO TRUE
+           END-IF.
+      * SI EL LLAMADOR NO INFORMA FECHA Y HORA SE USAN LAS DEL SISTEMA
+       2000-SELLO-DE-TIEMPO.
+           ACCEPT WS-FECHA-SIS FROM DATE YYYYMMDD
+           ACCEPT WS-HORA-SIS FROM TIME
+           IF AUD-FECHA = 0
+               MOVE WS-FECHA-SIS TO AUD-FECHA
+           END-IF
+           IF AUD-HORA = 0
+               MOVE WS-HORA-SIS(1:6) TO AUD-HORA
+           END-IF.
+      * ARMA Y ESCRIBE LA LINEA DE AUDITORIA
+       3000-ESCRIBIR-LINEA.
+           MOVE AUD-FECHA TO SAL-FECHA
+           MOVE AUD-HORA TO SAL-HORA
+           MOVE AUD-PROGRAMA TO SAL-PROGRAMA
+           MOVE AUD-ACCION TO SAL-ACCION
+           MOVE AUD-CUENTA TO SAL-CUENTA
+           MOVE AUD-IMPORTE TO SAL-IMPORTE
+           MOVE AUD-DETALLE TO SAL-DETALLE
+           WRITE AUD-LINEA FROM WS-LINEA-SAL
+           IF AUD-FS-OK
+               ADD 1 TO WS-CONTADOR-LINEAS
+               MOVE 0 TO AUD-RC
+           ELSE
+               MOVE 12 TO AUD-RC
+           END-IF.
+      * LLEVA UN CONTADOR POR TIPO DE ACCION (INICIO, FIN, ERROR...)
+      * PARA DETECTAR PROCESOS QUE REGISTRAN DEMASIADOS EVENTOS
+       4000-CONTAR-ACCION.
+           MOVE 'N' TO WS-ACC-HALLADA
+           PERFORM VARYING WS-IDX-ACC FROM 1 BY 1
+               UNTIL WS-IDX-ACC > 6 OR ACCION-REGISTRADA
+               IF WS-ACC-NOMBRE(WS-IDX-ACC) = AUD-ACCION
+                   ADD 1 TO WS-ACC-CUENTA(WS-IDX-ACC)
+                   MOVE 'S' TO WS-ACC-HALLADA
+               END-IF
+           END-PERFORM
+           IF NOT ACCION-REGISTRADA
+               PERFORM 4100-NUEVA-ACCION
+           END-IF.
+       4100-NUEVA-ACCION.
+           PERFORM VARYING WS-IDX-ACC FROM 1 BY 1
+               UNTIL WS-IDX-ACC > 6
+               IF WS-ACC-NOMBRE(WS-IDX-ACC) = SPACES
+                   MOVE AUD-ACCION TO WS-ACC-NOMBRE(WS-IDX-ACC)
+                   MOVE 1 TO WS-ACC-CUENTA(WS-IDX-ACC)
+                   MOVE 7 TO WS-IDX-ACC
+               END-IF
+           END-PERFORM.
+      * SI EL ARCHIVO SUPERA EL LIMITE DE LINEAS SE CIERRA Y SE ABRE
+      * UNO NUEVO PARA NO CRECER SIN CONTROL
+       5000-CONTROLAR-TAMANO.
+           IF WS-CONTADOR-LINEAS > WS-LIMITE-LINEAS
+               CLOSE AUDITORIA
+               OPEN OUTPUT AUDITORIA
+               MOVE 0 TO WS-CONTADOR-LINEAS
+           END-IF.

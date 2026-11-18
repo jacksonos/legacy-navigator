@@ -1,0 +1,200 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. FECHAS.
+      *================================================================
+      * FECHAS - RUTINA DE UTILIDADES DE FECHA PARA EL BATCH BANCARIO
+      * FUNCIONES SEGUN FEC-FUNCION:
+      *   V  VALIDA UNA FECHA AAAAMMDD (MES, DIA Y ANIO BISIESTO)
+      *   D  DIFERENCIA EN DIAS ENTRE DOS FECHAS (FECHA-2 - FECHA-1)
+      *   S  SUMA UN NUMERO DE DIAS A UNA FECHA
+      *   H  PROXIMO DIA HABIL (SALTA SABADOS Y DOMINGOS)
+      *   F  ULTIMO DIA DEL MES DE LA FECHA
+      *   M  MESES COMPLETOS ENTRE DOS FECHAS (ANTIGUEDAD)
+      * LA LLAMAN INTERESES, MORAS, EXTRACTO, VALIDCTA Y CIERRE.
+      *================================================================
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-FECHA-TRAB.
+           05  WS-ANIO             PIC 9(4).
+           05  WS-MES              PIC 99.
+           05  WS-DIA              PIC 99.
+       01  WS-FECHA-NUM REDEFINES WS-FECHA-TRAB PIC 9(8).
+       01  WS-TABLA-MESES.
+           05  WS-DIAS-MES OCCURS 12 TIMES PIC 99.
+       01  WS-BISIESTO             PIC X VALUE 'N'.
+           88  ES-BISIESTO         VALUE 'S'.
+       01  WS-RESTO-4              PIC 9(4).
+       01  WS-RESTO-100            PIC 9(4).
+       01  WS-RESTO-400            PIC 9(4).
+       01  WS-COCIENTE             PIC 9(6).
+       01  WS-INDICE               PIC 99.
+       01  WS-ABS-1                PIC 9(8).
+       01  WS-ABS-2                PIC 9(8).
+       01  WS-DIA-SEMANA           PIC 9.
+           88  FIN-DE-SEMANA       VALUE 0 6.
+       01  WS-RESTANTES            PIC S9(5).
+       01  WS-FECHA-AUX.
+           05  WS-ANIO-2           PIC 9(4).
+           05  WS-MES-2            PIC 99.
+           05  WS-DIA-2            PIC 99.
+       01  WS-FECHA-AUX-NUM REDEFINES WS-FECHA-AUX PIC 9(8).
+       01  WS-MESES                PIC S9(5).
+       LINKAGE SECTION.
+           COPY FECHAREG.
+       PROCEDURE DIVISION USING FEC-AREA.
+       0000-PRINCIPAL.
+           MOVE 0 TO FEC-RC
+           PERFORM 1000-CARGAR-TABLA-MESES
+           EVALUATE FEC-FUNCION
+               WHEN 'V'
+                   PERFORM 2000-VALIDAR-FECHA THRU 2000-EXIT
+               WHEN 'D'
+                   PERFORM 3000-DIFERENCIA-DIAS
+               WHEN 'S'
+                   PERFORM 4000-SUMAR-DIAS
+               WHEN 'H'
+                   PERFORM 5000-PROXIMO-HABIL
+               WHEN 'F'
+                   PERFORM 6000-ULTIMO-DIA-MES
+               WHEN 'M'
+                   PERFORM 7000-DIFERENCIA-MESES
+               WHEN OTHER
+                   MOVE 1 TO FEC-RC
+           END-EVALUATE
+           GOBACK.
+      * CARGA LOS DIAS DE CADA MES (FEBRERO SE AJUSTA SI ES BISIESTO)
+       1000-CARGAR-TABLA-MESES.
+           MOVE 31 TO WS-DIAS-MES(1)
+           MOVE 28 TO WS-DIAS-MES(2)
+           MOVE 31 TO WS-DIAS-MES(3)
+           MOVE 30 TO WS-DIAS-MES(4)
+           MOVE 31 TO WS-DIAS-MES(5)
+           MOVE 30 TO WS-DIAS-MES(6)
+           MOVE 31 TO WS-DIAS-MES(7)
+           MOVE 31 TO WS-DIAS-MES(8)
+           MOVE 30 TO WS-DIAS-MES(9)
+           MOVE 31 TO WS-DIAS-MES(10)
+           MOVE 30 TO WS-DIAS-MES(11)
+           MOVE 31 TO WS-DIAS-MES(12).
+      * VALIDA MES 1-12, DIA DENTRO DEL MES Y ANIO MAYOR A 1900
+       2000-VALIDAR-FECHA.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           IF WS-ANIO < 1900
+               MOVE 1 TO FEC-RC
+               GO TO 2000-EXIT
+           END-IF
+           IF WS-MES < 1 OR WS-MES > 12
+               MOVE 1 TO FEC-RC
+               GO TO 2000-EXIT
+           END-IF
+           PERFORM 2100-DETERMINAR-BISIESTO
+           IF ES-BISIESTO
+               MOVE 29 TO WS-DIAS-MES(2)
+           END-IF
+           IF WS-DIA < 1 OR WS-DIA > WS-DIAS-MES(WS-MES)
+               MOVE 1 TO FEC-RC
+           END-IF.
+       2000-EXIT.
+           EXIT.
+      * ANIO BISIESTO: DIVISIBLE POR 4, SALVO SIGLOS NO DIVISIBLES
+      * POR 400
+       2100-DETERMINAR-BISIESTO.
+           MOVE 'N' TO WS-BISIESTO
+           DIVIDE WS-ANIO BY 4 GIVING WS-COCIENTE REMAINDER WS-RESTO-4
+           DIVIDE WS-ANIO BY 100 GIVING WS-COCIENTE
+               REMAINDER WS-RESTO-100
+           DIVIDE WS-ANIO BY 400 GIVING WS-COCIENTE
+               REMAINDER WS-RESTO-400
+           IF WS-RESTO-4 = 0
+               IF WS-RESTO-100 NOT = 0 OR WS-RESTO-400 = 0
+                   MOVE 'S' TO WS-BISIESTO
+               END-IF
+           END-IF.
+      * CONVIERTE UNA FECHA A NUMERO DE DIAS DESDE 1900 (APROXIMADO
+      * POR ANIOS COMPLETOS MAS DIAS ACUMULADOS DE LOS MESES)
+       2500-FECHA-A-DIAS.
+           MOVE 0 TO WS-RESTANTES
+           PERFORM 2100-DETERMINAR-BISIESTO
+           IF ES-BISIESTO
+               MOVE 29 TO WS-DIAS-MES(2)
+           END-IF
+           PERFORM VARYING WS-INDICE FROM 1 BY 1
+               UNTIL WS-INDICE >= WS-MES
+               ADD WS-DIAS-MES(WS-INDICE) TO WS-RESTANTES
+           END-PERFORM
+           COMPUTE WS-ABS-1 = (WS-ANIO - 1900) * 365
+               + (WS-ANIO - 1897) / 4 + WS-RESTANTES + WS-DIA.
+      * DIFERENCIA EN DIAS ENTRE FECHA-2 Y FECHA-1
+       3000-DIFERENCIA-DIAS.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           PERFORM 2500-FECHA-A-DIAS
+           MOVE WS-ABS-1 TO WS-ABS-2
+           MOVE FEC-FECHA-2 TO WS-FECHA-NUM
+           PERFORM 2500-FECHA-A-DIAS
+           COMPUTE FEC-DIAS = WS-ABS-1 - WS-ABS-2.
+      * SUMA FEC-DIAS A LA FECHA, AVANZANDO MES A MES
+       4000-SUMAR-DIAS.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           MOVE FEC-DIAS TO WS-RESTANTES
+           PERFORM 4100-AVANZAR-UN-DIA UNTIL WS-RESTANTES <= 0
+           MOVE WS-FECHA-NUM TO FEC-RESULTADO.
+       4100-AVANZAR-UN-DIA.
+           PERFORM 2100-DETERMINAR-BISIESTO
+           IF ES-BISIESTO
+               MOVE 29 TO WS-DIAS-MES(2)
+           ELSE
+               MOVE 28 TO WS-DIAS-MES(2)
+           END-IF
+           ADD 1 TO WS-DIA
+           IF WS-DIA > WS-DIAS-MES(WS-MES)
+               MOVE 1 TO WS-DIA
+               ADD 1 TO WS-MES
+               IF WS-MES > 12
+                   MOVE 1 TO WS-MES
+                   ADD 1 TO WS-ANIO
+               END-IF
+           END-IF
+           SUBTRACT 1 FROM WS-RESTANTES.
+      * PROXIMO DIA HABIL: SI CAE EN SABADO O DOMINGO SE AVANZA
+       5000-PROXIMO-HABIL.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           PERFORM 5100-CALCULAR-DIA-SEMANA
+           PERFORM UNTIL NOT FIN-DE-SEMANA
+               MOVE WS-FECHA-NUM TO FEC-FECHA-1
+               MOVE 1 TO FEC-DIAS
+               PERFORM 4000-SUMAR-DIAS
+               MOVE FEC-RESULTADO TO WS-FECHA-NUM
+               PERFORM 5100-CALCULAR-DIA-SEMANA
+           END-PERFORM
+           MOVE WS-FECHA-NUM TO FEC-RESULTADO.
+      * DIA DE LA SEMANA A PARTIR DE LOS DIAS DESDE 1900 (1900-01-01
+      * FUE LUNES): 0 DOMINGO, 1 LUNES, ... 6 SABADO
+       5100-CALCULAR-DIA-SEMANA.
+           PERFORM 2500-FECHA-A-DIAS
+           DIVIDE WS-ABS-1 BY 7 GIVING WS-COCIENTE
+               REMAINDER WS-DIA-SEMANA.
+      * ULTIMO DIA DEL MES DE LA FECHA RECIBIDA
+       6000-ULTIMO-DIA-MES.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           PERFORM 2100-DETERMINAR-BISIESTO
+           IF ES-BISIESTO
+               MOVE 29 TO WS-DIAS-MES(2)
+           END-IF
+           MOVE WS-DIAS-MES(WS-MES) TO WS-DIA
+           MOVE WS-FECHA-NUM TO FEC-RESULTADO.
+      * MESES COMPLETOS ENTRE FECHA-1 Y FECHA-2: SE RESTAN ANIOS Y
+      * MESES Y SE DESCUENTA UNO SI EL DIA FINAL NO LLEGA AL INICIAL.
+      * SE USA PARA LA ANTIGUEDAD DE CUENTAS Y PLAZOS FIJOS
+       7000-DIFERENCIA-MESES.
+           MOVE FEC-FECHA-1 TO WS-FECHA-NUM
+           MOVE FEC-FECHA-2 TO WS-FECHA-AUX-NUM
+           COMPUTE WS-MESES = (WS-ANIO-2 - WS-ANIO) * 12
+               + WS-MES-2 - WS-MES
+           IF WS-DIA-2 < WS-DIA
+               SUBTRACT 1 FROM WS-MESES
+           END-IF
+           IF WS-MESES < 0
+               MOVE 0 TO WS-MESES
+               MOVE 1 TO FEC-RC
+           END-IF
+           MOVE WS-MESES TO FEC-DIAS.
