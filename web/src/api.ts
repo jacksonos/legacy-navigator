@@ -49,7 +49,7 @@ export const uploadFiles = (files: File[]) => {
   files.forEach((f) => fd.append('files', f))
   return call<Project>('/api/projects', { method: 'POST', body: fd })
 }
-export const loadSamples = () => call<Project>('/api/projects?samples=1', { method: 'POST' })
+export const loadSamples = (set: '1' | 'large' = '1') => call<Project>(`/api/projects?samples=${set}`, { method: 'POST' })
 export const getProject = (id: string) => call<Project>(`/api/projects/${encodeURIComponent(id)}`)
 export const getFile = (id: string, name: string) =>
   call<{ name: string; lines: string[] }>(`/api/projects/${encodeURIComponent(id)}/files/${encodeURIComponent(name)}`)
