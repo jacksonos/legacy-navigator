@@ -74,6 +74,9 @@ type Edge struct {
 type Program struct {
 	ID         string
 	File       string
+	IDLine     int // line of PROGRAM-ID in File
+	StartLine  int // first line of the program in File (IDENTIFICATION DIVISION)
+	EndLine    int // END PROGRAM line, or the last line of File; nested programs lie inside their parent's range
 	Sections   []Block
 	Paragraphs []Block
 	Data       []DataItem

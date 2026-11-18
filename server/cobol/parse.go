@@ -36,10 +36,16 @@ func Analyze(files map[string]string) *Project {
 	}
 
 	for _, e := range exp {
-		id, hasDiv := programID(e.toks)
+		segs, hasDiv := splitPrograms(e.toks, strings.Count(files[e.name], "\n")+1)
 		switch {
-		case id != "":
-			proj.Programs = append(proj.Programs, *parseProgram(e.name, id, e.toks, e.warns))
+		case len(segs) > 0:
+			for i, s := range segs {
+				var w []Warning
+				if i == 0 {
+					w = e.warns
+				}
+				proj.Programs = append(proj.Programs, *parseProgram(e.name, s, w))
+			}
 		case c.copied[e.name] || strings.EqualFold(path.Ext(e.name), ".cpy"):
 			proj.Warnings = append(proj.Warnings, e.warns...)
 		default:
@@ -66,24 +72,65 @@ func Analyze(files map[string]string) *Project {
 	return proj
 }
 
-// programID returns the PROGRAM-ID (after an IDENTIFICATION/ID DIVISION) and
-// whether any DIVISION exists.
-func programID(toks []Token) (id string, hasDiv bool) {
-	idDiv := false
-	for i, t := range toks {
-		if i+1 < len(toks) && toks[i+1].Text == "DIVISION" {
-			hasDiv = true
-			idDiv = idDiv || t.Text == "IDENTIFICATION" || t.Text == "ID"
-		}
-		if idDiv && t.Text == "PROGRAM-ID" {
-			for j := i + 1; j < len(toks); j++ {
-				if toks[j].Text != "." {
-					return toks[j].Text, hasDiv
+// segment holds the tokens of one program of a file (contained programs are
+// split out of their parent) and its line range in the file.
+type segment struct {
+	id                 string
+	idLine, start, end int // PROGRAM-ID line, IDENTIFICATION DIVISION line, END PROGRAM line (or last line)
+	toks               []Token
+}
+
+// splitPrograms splits a file's tokens at each IDENTIFICATION DIVISION that
+// has a PROGRAM-ID; END PROGRAM closes the innermost open program, so
+// consecutive and nested programs both work. hasDiv reports any DIVISION.
+func splitPrograms(toks []Token, lastLine int) (segs []*segment, hasDiv bool) {
+	var stack []*segment
+	var cur *segment
+	for i := 0; i < len(toks); i++ {
+		t := toks[i]
+		isDiv := i+1 < len(toks) && toks[i+1].Text == "DIVISION"
+		hasDiv = hasDiv || isDiv
+		if isDiv && (t.Text == "IDENTIFICATION" || t.Text == "ID") {
+			s := &segment{start: t.Loc.Line, end: lastLine}
+			for k := i + 2; k < len(toks) && !(k+1 < len(toks) && toks[k+1].Text == "DIVISION"); k++ {
+				if toks[k].Text != "PROGRAM-ID" {
+					continue
 				}
+				for j := k + 1; j < len(toks); j++ {
+					if toks[j].Text != "." {
+						s.id, s.idLine = toks[j].Text, toks[k].Loc.Line
+						break
+					}
+				}
+				break
+			}
+			if s.id != "" {
+				if cur != nil {
+					stack = append(stack, cur)
+				}
+				cur = s
+				segs = append(segs, s)
 			}
 		}
+		if t.Text == "END" && i+1 < len(toks) && toks[i+1].Text == "PROGRAM" {
+			if cur != nil {
+				cur.end = t.Loc.Line
+				cur = nil
+				if n := len(stack); n > 0 {
+					cur, stack = stack[n-1], stack[:n-1]
+				}
+			}
+			i += 2
+			if i+1 < len(toks) && toks[i+1].Text == "." {
+				i++
+			}
+			continue
+		}
+		if cur != nil {
+			cur.toks = append(cur.toks, t)
+		}
 	}
-	return "", hasDiv
+	return segs, hasDiv
 }
 
 type parser struct {
@@ -92,11 +139,12 @@ type parser struct {
 	recFile map[string]string // record name -> owning file
 }
 
-func parseProgram(file, id string, toks []Token, warns []Warning) *Program {
-	p := &Program{ID: id, File: file, Warnings: warns}
+func parseProgram(file string, seg *segment, warns []Warning) *Program {
+	p := &Program{ID: seg.id, File: file, Warnings: warns, IDLine: seg.idLine, StartLine: seg.start, EndLine: seg.end}
 	ps := &parser{p: p, known: map[string]bool{}, recFile: map[string]string{}}
 	var env, data, proc []Token
 	div := ""
+	toks := seg.toks
 	for i, t := range toks {
 		if i+1 < len(toks) && toks[i+1].Text == "DIVISION" {
 			div = t.Text
