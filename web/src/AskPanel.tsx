@@ -5,6 +5,8 @@ import type { Lang } from './i18n'
 
 type Open = (file: string, line?: number) => void
 const CITE = /^(.+):(\d+)(?:-\d+)?$/
+// Keep in sync with declFileControl/declFileSection in server/ask.go: file declarations are not graph nodes.
+const FILE_DECLS = ['FILE-CONTROL', 'FILE SECTION']
 const NAMES: Record<string, string> = { anthropic: 'Claude', openai: 'OpenAI', gemini: 'Gemini', openrouter: 'OpenRouter' }
 const label = (p: Provider) => `${NAMES[p.id] ?? p.id} (${p.model})`
 
@@ -105,7 +107,7 @@ export default function AskPanel({ projectId, lang, providers, open, fail, showM
                       <button type="button" className="link" onClick={() => open(ev.file, ev.startLine)}>
                         {ev.file}:{ev.startLine}-{ev.endLine} ({ev.paragraph})
                       </button>
-                      {ev.paragraph && ev.program && <button type="button" className="link map-btn" onClick={() => showMap(ev.paragraph, ev.program)}>{t('showInMap')}</button>}
+                      {ev.paragraph && ev.program && !FILE_DECLS.includes(ev.paragraph) && <button type="button" className="link map-btn" onClick={() => showMap(ev.paragraph, ev.program)}>{t('showInMap')}</button>}
                       <pre>{ev.text}</pre>
                     </li>
                   ))}
