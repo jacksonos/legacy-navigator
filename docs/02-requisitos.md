@@ -4,14 +4,14 @@
 
 Como desarrollador, quiero cargar uno o varios fuentes y copybooks para analizarlos juntos.
 
-- Acepta `.cbl`, `.cob`, `.cpy` y `.txt`, con arrastrar y soltar o con el selector. Límite de 1 MB
+- Acepta `.cbl`, `.cob`, `.cpy`, `.txt` y los fuentes CL de IBM i `.clp`, `.clle` y `.cl` (un `.txt` con un comando `PGM` y un `ENDPGM` es CL), con arrastrar y soltar o con el selector. Límite de 1 MB
   por archivo y de 10 MB por proyecto, validado en el servidor.
 - Un botón «Usar ejemplos» / «Use samples» carga los fuentes de muestra, y «Demo grande» / «Large demo» carga una
-  demo bancaria de 12 programas, 8 copybooks y 3 045 líneas (`POST /api/projects?samples=large`).
+  demo bancaria de 12 programas COBOL, 1 programa CL (`CIERREDIA.clp`), 8 copybooks y 3 102 líneas (`POST /api/projects?samples=large`).
 - Cada carga crea un proyecto en el servidor (SQLite) y devuelve su id, que queda en la URL para recargar la página.
 - Si un archivo no parece COBOL (no tiene ninguna DIVISION), se avisa pero se deja cargado.
 - Un archivo puede contener varios programas (consecutivos o anidados); se aceptan formato fijo y libre.
-- Cada archivo muestra su resumen: el PROGRAM-ID, el número de líneas, de párrafos y de datos, y los avisos.
+- Cada archivo muestra su resumen: el PROGRAM-ID (en CL, «CL · PGM» y el nombre del archivo en mayúsculas), el número de líneas, de párrafos (etiquetas, en CL) y de datos, y los avisos.
 
 ## HU-02 Buscar por símbolo
 
@@ -45,8 +45,8 @@ una explicación que pueda verificar.
 
 Como desarrollador, quiero ver un grafo de qué párrafos llaman a cuáles y qué programas externos se invocan.
 
-- Nodos: programas, párrafos y secciones, y programas externos (CALL).
-- Aristas: `PERFORM X`, `PERFORM X THRU Y` (se expande al rango), `GO TO`, `CALL 'LIT'`.
+- Nodos: programas (los CL con otro color y la entrada «Programa CL» en la leyenda), párrafos y secciones (etiquetas, en CL) y programas externos (CALL).
+- Aristas: `PERFORM X`, `PERFORM X THRU Y` (se expande al rango), `GO TO`, `CALL 'LIT'`. En CL: `CALL`, `CALLPRC`, `TFRCTL`, `GOTO` y `MONMSG … EXEC(GOTO …)`; `SBMJOB CMD(CALL …)` es una arista `call` asíncrona, discontinua y con la etiqueta «SBMJOB». Las llamadas entre CL y COBOL se resuelven por nombre en los dos sentidos, y `OVRDBF` queda como referencia de E/S (con el destino `LIB/ARCHIVO`) sobre el nombre lógico del archivo COBOL.
 - Tres vistas: **Sistema** (un nodo por programa, aristas CALL agregadas; la de por defecto con más de un programa),
   **Programa** (secciones y párrafos de un programa y sus CALL) y **Foco** (vecinos a 1–3 saltos de un nodo).
 - Tope de 300 aristas por vista. Si se supera, la vista se reduce (de programa a foco, y la profundidad del foco)
@@ -56,7 +56,7 @@ Como desarrollador, quiero ver un grafo de qué párrafos llaman a cuáles y qu�
 - Desde un resultado de búsqueda o una respuesta, «Ver en el mapa» abre la vista Foco del párrafo (no se ofrece para
   las declaraciones `FILE-CONTROL` / `FILE SECTION`).
 - **Mapa parcial**: aparece la etiqueta «Mapa parcial» / «Partial map» y la lista de motivos cuando existe alguno de estos casos:
-  - `CALL identificador` (nombre dinámico): nodo «? (dinámico)» con la línea de origen.
+  - `CALL identificador` (nombre dinámico; en CL, `CALL PGM(&VAR)`): nodo «? (dinámico)» con la línea de origen.
   - `COPY` sin el copybook cargado: aviso con el nombre que falta.
   - `CALL 'X'` cuando `X` no está cargado: el nodo externo aparece con borde discontinuo.
   - `ALTER` o `GO TO … DEPENDING ON`: la arista se marca como incierta.

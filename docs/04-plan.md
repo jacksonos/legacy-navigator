@@ -5,6 +5,7 @@
 ```
 server/               módulo Go: main.go, api.go, askapi.go, ask.go, cite.go, graph.go, store.go
   cobol/              normalizador, expansor de COPY y parser
+  cl/                 parser de CL de IBM i (.clp, .clle, .cl)
   llm/                proveedores Anthropic, OpenAI, Gemini y OpenRouter
   samples/            ejemplos pequeños (embebidos)
   samples-large/      demo bancaria grande (embebida)
@@ -28,8 +29,9 @@ Escritos a medida, con nombres y comentarios en español:
 
 ## Demo grande (`server/samples-large/`)
 
-Un sistema bancario de 12 programas (`BATCHDIA`, `CARGAMOV`, `CIERRE`, `COMISION`, `ERRORES`, `EXTRACTO`, `FECHAS`,
-`INTERESES`, `MORAS`, `SALDOS`, `VALIDCTA`, `AUDITLOG`), 8 copybooks y 3 045 líneas. Se carga con «Demo grande» o con
+Un sistema bancario de 12 programas COBOL (`BATCHDIA`, `CARGAMOV`, `CIERRE`, `COMISION`, `ERRORES`, `EXTRACTO`, `FECHAS`,
+`INTERESES`, `MORAS`, `SALDOS`, `VALIDCTA`, `AUDITLOG`), el trabajo nocturno CL `CIERREDIA.clp` (entrada del batch: `OVRDBF`,
+`CALL` a `BATCHDIA` y `SBMJOB` de `EXTRACTO`), 8 copybooks y 3 102 líneas. Se carga con «Demo grande» o con
 `POST /api/projects?samples=large`. Incluye un `CALL` dinámico, un `COPY` ausente, un `CALL` a un programa no cargado y un
 `GO TO … DEPENDING ON`, y sirve para probar las vistas del mapa y la recuperación sobre un proyecto de tamaño real.
 
@@ -58,6 +60,7 @@ Un sistema bancario de 12 programas (`BATCHDIA`, `CARGAMOV`, `CIERRE`, `COMISION
 | #14 | Parser: formato libre, `COPY … REPLACING`, varios programas por archivo (tabla `programs`, `programIds`, `program` en `Ref`/`SymbolHit`/`Evidence`) y tabla completa de verbos COBOL |
 | #15 | «Ver en el mapa» se oculta en la evidencia de `FILE-CONTROL` / `FILE SECTION` |
 | #16 | Aviso de seguridad de `katex` corregido con `overrides` (`^0.18.2`, Mermaid sigue en 11.17.2) y `$` escapado en las etiquetas del mapa |
+| #18 (esta rama) | Soporte de IBM i CL: paquete `cl/`, `.clp`/`.clle`/`.cl`, `programs.language`, `refs.detail` y `edges.async`, aristas `SBMJOB` asíncronas, nodos CL en el mapa y `CIERREDIA.clp` en la demo grande |
 
 ## Estado actual
 
