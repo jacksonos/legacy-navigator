@@ -8,3 +8,4 @@ data/
 *.test
 *.out
 legacy-navigator
+.claude/

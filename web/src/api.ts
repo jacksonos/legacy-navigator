@@ -11,7 +11,10 @@ export type GraphNode = {
   file: string; line: number; resolved: boolean
 }
 export type GraphEdge = { from: string; to: string; kind: 'perform' | 'goto' | 'call'; file: string; line: number; uncertain: boolean }
-export type Graph = { nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
+export type GraphQuery = { view?: 'system' | 'program' | 'focus'; program?: string; node?: string; depth?: number }
+export type Graph = {
+  view: 'system' | 'program' | 'focus'; program: string; node: string; depth: number; programs: string[]
+  nodes: GraphNode[]; edges: GraphEdge[]; partial: boolean; reasons: Warning[] }
 
 export class ApiError extends Error {
   status: number
@@ -55,7 +58,11 @@ export const search = (id: string, q: string, kind: string, signal?: AbortSignal
     `/api/projects/${encodeURIComponent(id)}/search?q=${encodeURIComponent(q)}${kind ? `&kind=${kind}` : ''}`,
     { signal },
   )
-export const getGraph = (id: string) => call<Graph>(`/api/projects/${encodeURIComponent(id)}/graph`)
+export const getGraph = (id: string, q: GraphQuery = {}) => {
+  const p = new URLSearchParams()
+  for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v))
+  return call<Graph>(`/api/projects/${encodeURIComponent(id)}/graph${p.size ? '?' + p : ''}`)
+}
 
 export type Provider = { id: string; model: string }
 export type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; text: string }

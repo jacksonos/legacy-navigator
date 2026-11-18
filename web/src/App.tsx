@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   ApiError, getFile, getProviders, getGraph, getProject, loadSamples, search, uploadFiles,
-  type Graph, type GraphNode, type Project, type Provider, type Ref, type SearchResult, type Warning,
+  type Graph, type GraphQuery, type Project, type Provider, type Ref, type SearchResult, type Warning,
 } from './api'
 import AskPanel from './AskPanel'
 import CodeViewer from './CodeViewer'
@@ -20,7 +20,7 @@ function Warnings({ list, open }: { list: Warning[]; open?: Open }) {
       {list.map((w, i) => (
         <li key={i}>
           <strong>{t('warn.' + w.kind)}</strong>
-          {w.detail && <> — {w.detail}</>}
+          {w.detail && <> — {w.detail}{w.kind === 'too_large' && <> {t('edgesShown')}</>}</>}
           {w.file && (open
             ? <> (<button type="button" className="link" onClick={() => open(w.file, w.line || undefined)}>{w.file}{w.line ? `:${w.line}` : ''}</button>)</>
             : <> ({w.file}{w.line ? `:${w.line}` : ''})</>)}
@@ -88,7 +88,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
 }
 
 function SearchPanel({ projectId, open, fail, showMap }: {
-  projectId: string | null; open: Open; fail: (e: unknown) => void; showMap: (label: string) => void
+  projectId: string | null; open: Open; fail: (e: unknown) => void; showMap: (label: string, file: string) => void
 }) {
   const t = useT()
   const [q, setQ] = useState('')
@@ -106,8 +106,8 @@ function SearchPanel({ projectId, open, fail, showMap }: {
     return () => { clearTimeout(h); ctl.abort() }
   }, [projectId, q, kind, fail])
 
-  const mapBtn = (label: string) => (
-    <button type="button" className="link map-btn" onClick={() => showMap(label)}>{t('showInMap')}</button>
+  const mapBtn = (label: string, file: string) => (
+    <button type="button" className="link map-btn" onClick={() => showMap(label, file)}>{t('showInMap')}</button>
   )
   const link = (file: string, line: number, extra = '') => (
     <button type="button" className="link" onClick={() => open(file, line)}>
@@ -140,14 +140,14 @@ function SearchPanel({ projectId, open, fail, showMap }: {
             <ul className="hits">
               {results.map((s, i) => (
                 <li key={i}>
-                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span>{(s.kind === 'paragraph' || s.kind === 'section') && mapBtn(s.name)}</div>
+                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span>{(s.kind === 'paragraph' || s.kind === 'section') && mapBtn(s.name, s.def.file)}</div>
                   <div>{t('definedAt')} {link(s.def.file, s.def.line)}</div>
                   {REF_KINDS.map((rk) => {
                     const rs: Ref[] = (s.refs ?? []).filter((r) => r.kind === rk)
                     return rs.length > 0 && (
                       <div key={rk} className="refs">
                         <span className={'tag ' + rk}>{t('ref.' + rk)}</span>
-                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph)}</>}</span>)}
+                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph, r.file)}</>}</span>)}
                       </div>
                     )
                   })}
@@ -199,7 +199,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   const viewReq = useRef(0)
   const [tab, setTab] = useState<'code' | 'map'>('code')
   const [loaded, setGraph] = useState<{ pid: string; g: Graph } | null>(null)
-  const [focus, setFocus] = useState<string | null>(null)
+  const [query, setQuery] = useState<GraphQuery>({})
   const [providers, setProviders] = useState<Provider[]>([])
 
   const fail = useCallback((e: unknown) => {
@@ -219,7 +219,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
     setBusy(true); setError(null); setGone(false)
     try {
       const pr = await p
-      setProject(pr); setView(null); setPid(pr.id); setFocus(null)
+      setProject(pr); setView(null); setPid(pr.id); setQuery({})
     } catch (e) {
       fail(e)
     } finally {
@@ -243,9 +243,13 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
   }, [])
 
   const pid = project?.id
+  const qkey = JSON.stringify(query)
   useEffect(() => {
-    if (pid) getGraph(pid).then((g) => setGraph({ pid, g })).catch(fail)
-  }, [pid, fail])
+    if (!pid) return
+    let live = true
+    getGraph(pid, JSON.parse(qkey)).then((g) => { if (live) setGraph({ pid, g }) }).catch((e) => { if (live) fail(e) })
+    return () => { live = false }
+  }, [pid, qkey, fail])
   const graph = loaded && loaded.pid === pid ? loaded.g : null
 
   const open: Open = useCallback((file, line) => {
@@ -257,8 +261,12 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       .catch(fail)
   }, [project, fail])
 
-  const showMap = (label: string) => { setFocus(label); setTab('map') }
-  const onNode = (n: GraphNode) => { if (n.file) open(n.file, n.line || undefined) }
+  // Show in map: focus view (depth 1) on that paragraph; the program comes from the file it lives in.
+  const showMap = (label: string, file: string) => {
+    const prog = project?.files.find((f) => f.name === file)?.programId
+    setQuery(prog ? { view: 'focus', node: `${prog}:${label}`, depth: 1 } : {})
+    setTab('map')
+  }
 
   return (
     <>
@@ -288,7 +296,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
           <div className="tabs" role="tablist">
             {(['code', 'map'] as const).map((k) => (
               <button key={k} type="button" role="tab" aria-selected={tab === k} className={tab === k ? 'tab on' : 'tab'}
-                onClick={() => { if (k === 'map') setFocus(null); setTab(k) }}>
+                onClick={() => setTab(k)}>
                 {t(k === 'code' ? 'tabCode' : 'tabMap')}
               </button>
             ))}
@@ -303,7 +311,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
                 </div>
               )}
               <Legend />
-              <GraphView graph={graph} focus={focus} onNode={onNode} />
+              <GraphView graph={graph} onNode={(n) => { if (n.file) open(n.file, n.line || undefined) }} onQuery={setQuery} />
             </div>
           ) : <p className="muted">{project ? t('loading') : t('noProject')}</p>)}
         </section>

@@ -73,6 +73,9 @@ input[type=search], select { padding: .3rem .4rem; background: var(--panel); col
 .fit-btn { align-self: flex-start; margin: 0 0 .4rem; font-size: .8rem; padding: .15rem .6rem; }
 .banner { border: 2px solid var(--w); border-radius: 4px; padding: .4rem .6rem; margin-bottom: .4rem; max-height: 9rem; overflow: auto; }
 .banner > strong { color: var(--w); text-transform: uppercase; letter-spacing: .03em; }
+.map-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .4rem; font-size: .85rem; }
+.map-bar label { display: flex; align-items: center; gap: .3rem; }
+.map g.node.sel rect, .map g.node.sel polygon, .map g.node.sel path { stroke: var(--accent); stroke-width: 4px; }
 .legend { margin: 0 0 .4rem; }
 .legend span { margin-right: .6rem; white-space: nowrap; }
 .map-btn { margin-left: .4rem; font-size: .8rem; }
