@@ -17,17 +17,21 @@ function Answer({ text, open }: { text: string; open: Open }) {
   for (const m of text.matchAll(/\[([^[\]]+)\]/g)) {
     const parts = m[1].split(',').map((s) => s.trim())
     if (!parts.every((p) => CITE.test(p))) continue
-    out.push(text.slice(last, m.index), '[')
+    out.push(text.slice(last, m.index))
+    // Each bracket is bound to its neighbouring link (nowrap); the list may wrap after the ", ".
     parts.forEach((p, i) => {
       const [, file, line] = p.match(CITE)!
       out.push(
         <Fragment key={`${m.index}-${i}`}>
           {i > 0 && ', '}
-          <button type="button" className="link" onClick={() => open(file, +line)}>{p}</button>
+          <span style={{ whiteSpace: 'nowrap' }}>
+            {i === 0 && '['}
+            <button type="button" className="link" onClick={() => open(file, +line)}>{p}</button>
+            {i === parts.length - 1 && ']'}
+          </span>
         </Fragment>,
       )
     })
-    out.push(']')
     last = m.index + m[0].length
   }
   out.push(text.slice(last))
