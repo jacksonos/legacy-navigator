@@ -11,6 +11,7 @@
 ![Vite](https://img.shields.io/badge/Vite-8-646CFF?logo=vite&logoColor=white)
 ![SQLite FTS5](https://img.shields.io/badge/SQLite-FTS5-003B57?logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 [Features](#features) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Docs](#documentation)
 
@@ -198,3 +199,7 @@ Project documents are in Spanish:
 [requirements](docs/02-requisitos.md) ·
 [architecture](docs/03-arquitectura.md) ·
 [plan and status](docs/04-plan.md)
+
+## License
+
+[MIT](LICENSE) © 2026 jacksonos
