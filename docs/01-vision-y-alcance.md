@@ -15,27 +15,31 @@ Un explorador web donde el usuario carga uno o varios fuentes COBOL (y sus copyb
 2. Pregunta en lenguaje natural («¿Dónde se calcula el saldo y qué archivos intervienen?»)
    y recibe una explicación **con citas `archivo:línea`** verificables.
 3. Ve un mapa del flujo de llamadas (PERFORM / CALL) que se marca como **parcial** cuando
-   hay dependencias que no se pueden resolver.
+   hay dependencias que no se pueden resolver. El mapa escala a sistemas grandes con tres vistas
+   (sistema, programa y foco) y un tope de aristas.
 
 ## Usuario objetivo
 
 Desarrollador (no necesariamente experto en COBOL) que va a mantener o migrar un programa
 y necesita entenderlo antes de tocarlo.
 
-## Alcance del MVP
+## Alcance
 
 | Incluido | Fuera de alcance |
 |---|---|
-| Carga de archivos `.cbl`, `.cob`, `.cpy` (formato fijo) | Conexión a AS/400, mainframe o repositorios reales |
-| Preguntas con OpenAI, Claude o Gemini (a elegir) | Autenticación de usuarios |
+| Carga de archivos `.cbl`, `.cob`, `.cpy` y `.txt`, en formato fijo o libre | Conexión a AS/400, mainframe o repositorios reales |
+| Preguntas con Claude, OpenAI, Gemini u OpenRouter (a elegir) | Autenticación de usuarios |
 | UI en inglés y español | Otros idiomas |
 | Despliegue con Docker | Kubernetes, alta disponibilidad |
-| Índice de símbolos: divisiones, secciones, párrafos, datos (niveles 01–49, 77, 88), archivos (SELECT/FD), COPY, CALL | Formato libre COBOL 2002+, dialectos con extensiones propietarias |
+| Índice de símbolos: divisiones, secciones, párrafos, datos (niveles 01–49, 77, 88), archivos (SELECT/FD), COPY, CALL | Dialectos con extensiones propietarias |
+| `COPY … REPLACING` (pseudotexto, palabra, `LEADING`/`TRAILING`) y varios programas por archivo (consecutivos o anidados) | Nombres `GLOBAL` del programa padre visibles en un hijo anidado |
+| Clasificación de todos los verbos COBOL para lecturas y escrituras | |
 | Búsqueda por símbolo con ubicación y referencias (definición, lecturas, escrituras) | Ejecución, depuración o compilación del COBOL |
-| Pregunta en lenguaje natural con respuesta citada | Edición de código o refactorización asistida |
-| Grafo de llamadas PERFORM (interno) y CALL (externo) | Análisis de JCL, CICS, DB2 embebido (`EXEC SQL` se muestra como bloque opaco) |
-| Aviso de mapa parcial con lista de lo no resuelto | |
-| Archivos COBOL de ejemplo incluidos en el repo | |
+| Pregunta en lenguaje natural con respuesta citada; con proveedor, la pregunta se asigna antes a símbolos del índice | Edición de código o refactorización asistida |
+| Grafo de llamadas PERFORM (interno) y CALL (externo), con vistas sistema, programa y foco (tope de 300 aristas) | Análisis de JCL, CICS, DB2 embebido (`EXEC SQL` se muestra como bloque opaco) |
+| Aviso de mapa parcial con lista de lo no resuelto | Cuotas por usuario y límite de peticiones |
+| Ejemplos incluidos en el repo: uno pequeño (4 archivos) y una demo grande (12 programas, 8 copybooks, 3 045 líneas) | |
+| Los proyectos caducan solos (`PROJECT_TTL`, 7 días por defecto) | |
 
 ## Criterios de éxito
 
@@ -48,6 +52,7 @@ y necesita entenderlo antes de tocarlo.
   `GO TO`/`ALTER` sin resolver.
 - Un fuente de unas 2 000 líneas se indexa en menos de 1 s.
 - `docker run` levanta la app completa con los ejemplos disponibles.
+- La demo grande (`?samples=large`) se navega con el mapa acotado: ninguna vista supera 300 aristas.
 
 ## Qué demuestra (portafolio)
 

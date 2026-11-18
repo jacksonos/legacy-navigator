@@ -6,9 +6,11 @@ Como desarrollador, quiero cargar uno o varios fuentes y copybooks para analizar
 
 - Acepta `.cbl`, `.cob`, `.cpy` y `.txt`, con arrastrar y soltar o con el selector. Límite de 1 MB
   por archivo y de 10 MB por proyecto, validado en el servidor.
-- Un botón «Usar ejemplos» / «Use samples» carga los fuentes de muestra.
+- Un botón «Usar ejemplos» / «Use samples» carga los fuentes de muestra, y «Demo grande» / «Large demo» carga una
+  demo bancaria de 12 programas, 8 copybooks y 3 045 líneas (`POST /api/projects?samples=large`).
 - Cada carga crea un proyecto en el servidor (SQLite) y devuelve su id, que queda en la URL para recargar la página.
 - Si un archivo no parece COBOL (no tiene ninguna DIVISION), se avisa pero se deja cargado.
+- Un archivo puede contener varios programas (consecutivos o anidados); se aceptan formato fijo y libre.
 - Cada archivo muestra su resumen: el PROGRAM-ID, el número de líneas, de párrafos y de datos, y los avisos.
 
 ## HU-02 Buscar por símbolo
@@ -28,7 +30,9 @@ Como desarrollador, quiero preguntar «¿Dónde se calcula el saldo y qué archi
 una explicación que pueda verificar.
 
 - La pregunta se puede hacer en inglés o en español, y la respuesta llega en el idioma de la UI.
-- El usuario elige el proveedor (OpenAI, Claude o Gemini) entre los que tengan clave en el servidor.
+- El usuario elige el proveedor (Claude, OpenAI, Gemini u OpenRouter) entre los que tengan clave y modelo en el servidor.
+- Con proveedor, antes de recuperar la evidencia se le pide asignar la pregunta a nombres de símbolo del proyecto
+  (máx. 15, validados contra el índice, con 15 s de tope). Si falla, se sigue con los términos de la pregunta.
 - La respuesta cita cada afirmación con `archivo:línea` o `archivo:línea-línea`, y cada cita es un enlace al visor.
 - Antes de devolver la respuesta, el servidor comprueba que cada cita exista y caiga dentro de un
   fragmento que se envió como contexto. Una cita inválida se elimina y se lista como «cita no verificada».
@@ -41,10 +45,16 @@ una explicación que pueda verificar.
 
 Como desarrollador, quiero ver un grafo de qué párrafos llaman a cuáles y qué programas externos se invocan.
 
-- Nodos: párrafos y secciones, y programas externos (CALL).
+- Nodos: programas, párrafos y secciones, y programas externos (CALL).
 - Aristas: `PERFORM X`, `PERFORM X THRU Y` (se expande al rango), `GO TO`, `CALL 'LIT'`.
-- Al pulsar un nodo se abre su definición en el visor.
-- Desde un resultado de búsqueda o una respuesta se puede resaltar el subgrafo relevante.
+- Tres vistas: **Sistema** (un nodo por programa, aristas CALL agregadas; la de por defecto con más de un programa),
+  **Programa** (secciones y párrafos de un programa y sus CALL) y **Foco** (vecinos a 1–3 saltos de un nodo).
+- Tope de 300 aristas por vista. Si se supera, la vista se reduce (de programa a foco, y la profundidad del foco)
+  y el mapa se marca como parcial con el motivo «vista reducida» (`too_large`, «mostradas/total»).
+- Al pulsar un nodo se selecciona; «Open code» / «Focus here» abren su definición en el visor o centran la vista
+  Foco en él. En la vista Sistema, pulsar un programa abre su vista Programa.
+- Desde un resultado de búsqueda o una respuesta, «Ver en el mapa» abre la vista Foco del párrafo (no se ofrece para
+  las declaraciones `FILE-CONTROL` / `FILE SECTION`).
 - **Mapa parcial**: aparece la etiqueta «Mapa parcial» / «Partial map» y la lista de motivos cuando existe alguno de estos casos:
   - `CALL identificador` (nombre dinámico): nodo «? (dinámico)» con la línea de origen.
   - `COPY` sin el copybook cargado: aviso con el nombre que falta.
@@ -60,6 +70,9 @@ Como usuario, quiero usar la app en inglés o en español.
 
 ## Requisitos no funcionales
 
+- Los proyectos se borran solos tras `PROJECT_TTL` (por defecto 168 h; `0` lo desactiva), con limpieza al arrancar y cada hora.
+- Sin vulnerabilidades conocidas en las dependencias del front (`npm audit` limpio; `katex` fijado con `overrides`).
+- La integración continua (GitHub Actions) ejecuta `gofmt`, `go vet`, `go test`, lint y build del front, y `docker build`.
 - Indexar un fuente de 2 000 líneas tarda menos de 1 s y responder una pregunta menos de 15 s.
 - Solo los fragmentos seleccionados salen hacia el proveedor LLM, y la UI lo indica.
 - Las claves de API solo existen en las variables de entorno del servidor y nunca aparecen en el repositorio.
