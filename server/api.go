@@ -20,6 +20,9 @@ import (
 //go:embed samples
 var samplesFS embed.FS
 
+//go:embed samples-large
+var samplesLargeFS embed.FS
+
 const (
 	maxFile  = 1 << 20
 	maxTotal = 10 << 20
@@ -65,14 +68,26 @@ func validExt(name string) bool {
 
 func (a *api) create(w http.ResponseWriter, r *http.Request) {
 	files := map[string]string{}
-	if r.URL.Query().Get("samples") == "1" {
-		ents, err := samplesFS.ReadDir("samples")
+	if set := r.URL.Query().Get("samples"); set != "" {
+		dir, fsys := "samples", samplesFS
+		switch set {
+		case "1":
+		case "large":
+			dir, fsys = "samples-large", samplesLargeFS
+		default:
+			fail(w, http.StatusBadRequest, "unknown samples set: "+set)
+			return
+		}
+		ents, err := fsys.ReadDir(dir)
 		if err != nil {
 			serverError(w, err)
 			return
 		}
 		for _, e := range ents {
-			b, err := samplesFS.ReadFile("samples/" + e.Name())
+			if e.IsDir() {
+				continue
+			}
+			b, err := fsys.ReadFile(dir + "/" + e.Name())
 			if err != nil {
 				serverError(w, err)
 				return

@@ -30,7 +30,7 @@
 
 | Método y ruta | Qué hace |
 |---|---|
-| `POST /api/projects` | Sube los archivos (multipart) y devuelve `{id, resumen, avisos}`. Con `?samples=1` carga los ejemplos |
+| `POST /api/projects` | Sube los archivos (multipart) y devuelve `{id, resumen, avisos}`. Con `?samples=1` carga los ejemplos pequeños y con `?samples=large` la demo grande |
 | `GET /api/projects/{id}` | Resumen por archivo y avisos de mapa parcial |
 | `GET /api/projects/{id}/files/{name}` | Fuente con números de línea |
 | `GET /api/projects/{id}/search?q=&kind=` | Símbolos con su definición y sus referencias clasificadas |
@@ -44,20 +44,24 @@ Las claves de los LLM solo viven en el servidor, en variables de entorno. El nav
 
 ```ts
 type Warning = { kind: string; detail: string; file: string; line: number }   // file/line pueden ir vacíos/0
-type FileSummary = { name: string; lines: number; programId: string; paragraphs: number; dataItems: number; warnings: Warning[] }
+type FileSummary = { name: string; lines: number; programId: string /* el primero */; programIds: string[] /* todos los del archivo */; paragraphs: number; dataItems: number; warnings: Warning[] }
 type Project = { id: string; files: FileSummary[]; warnings: Warning[] }      // warnings = nivel proyecto
 
-// POST /api/projects (multipart, campo "files" repetido) | POST /api/projects?samples=1   → 201 Project
+// POST /api/projects (multipart, campo "files" repetido) | POST /api/projects?samples=1|large   → 201 Project
 // GET  /api/projects/{id}                                                                → 200 Project
 // GET  /api/projects/{id}/files/{name}      → 200 { name: string; lines: string[] }      // líneas crudas, índice 0 = línea 1
 // GET  /api/projects/{id}/search?q=&kind=   kind ∈ data|paragraph|section|file|program (opcional)
-type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string }
-type SymbolHit = { name: string; kind: string; def: { file: string; line: number }; refs: Ref[] }
+type Ref = { kind: "read" | "write" | "io"; file: string; line: number; paragraph: string; program: string }   // program = PROGRAM-ID que contiene la línea
+type SymbolHit = { name: string; kind: string; program: string /* "" si viene de un copybook */; def: { file: string; line: number }; refs: Ref[] }
 type LineHit = { file: string; line: number; text: string }                    // aciertos FTS5 sobre las líneas
 // → 200 { results: SymbolHit[]; lines: LineHit[] }   (máx. 50 de cada)
 
 // Errores: { error: string } con 400 / 404 / 413
 ```
+
+Un archivo puede contener varios programas (consecutivos con `END PROGRAM` o anidados). Los nodos del grafo
+ya usan `PROG:PÁRRAFO`; `program` en `Ref`, `SymbolHit` y `Evidence` permite pedir la vista Foco sin
+deducir el programa a partir del archivo.
 
 ### Contrato del grafo (H3)
 
@@ -109,7 +113,7 @@ type Graph = {
 
 // POST /api/projects/{id}/ask
 type AskRequest = { question: string /* 1..500 caracteres */; lang: "en" | "es"; provider?: string }
-type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; text: string }  // text = líneas crudas unidas con \n
+type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; program: string; text: string }  // text = líneas crudas unidas con \n
 type Citation = { file: string; line: number; endLine: number }   // endLine = line si es una sola línea
 type AskResponse = {
   mode: "llm" | "evidence"        // "evidence" = sin proveedor configurado o sin evidencia (no se llama al LLM)

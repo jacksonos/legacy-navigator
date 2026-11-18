@@ -30,11 +30,12 @@ function Warnings({ list, open }: { list: Warning[]; open?: Open }) {
   )
 }
 
-function FilesPanel({ project, busy, onUpload, onSamples, open }: {
+function FilesPanel({ project, busy, onUpload, onSamples, onLargeDemo, open }: {
   project: Project | null
   busy: boolean
   onUpload: (f: File[]) => void
   onSamples: () => void
+  onLargeDemo: () => void
   open: Open
 }) {
   const t = useT()
@@ -58,6 +59,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
           />
         </label>
         <button type="button" className="btn" onClick={onSamples} disabled={busy}>{t('useSamples')}</button>
+        <button type="button" className="btn" onClick={onLargeDemo} disabled={busy}>{t('useLargeDemo')}</button>
         <p className="muted">{t('accepted')}</p>
       </div>
       {project ? (
@@ -289,7 +291,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       <main>
         <FilesPanel
           project={project} busy={busy} open={open}
-          onUpload={(f) => run(uploadFiles(f))} onSamples={() => run(loadSamples())}
+          onUpload={(f) => run(uploadFiles(f))} onSamples={() => run(loadSamples())} onLargeDemo={() => run(loadSamples('large'))}
         />
         <section className="panel viewer-panel" aria-labelledby="h-viewer">
           <h2 id="h-viewer">{t('viewer')}</h2>
