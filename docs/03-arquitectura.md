@@ -137,15 +137,31 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
 1. **`cobol/`** (paquete puro, sin E/S; es el núcleo que se prueba):
    - **Normalizador**: aplica las reglas del formato fijo. Ignora las columnas 1–6 y descarta todo
      desde la columna 73. La columna 7 marca el tipo de línea: `*` o `/` es comentario, `-` es
-     continuación y `D` es depuración. Cada fragmento conserva su `(archivo, línea)` original,
-     **base de toda la trazabilidad**.
+     continuación y `D` es depuración. `>>SOURCE FORMAT FREE`, `>>SOURCE FREE` y
+     `$SET SOURCEFORMAT"FREE"` (sin distinguir mayúsculas) pasan a formato libre desde esa línea:
+     sin columnas, y los párrafos deben empezar con sangría menor que 4. `>>SOURCE FORMAT FIXED`
+     vuelve al fijo. `*>` abre un comentario hasta el fin de línea en ambos formatos (fuera de
+     literales). Cada fragmento conserva su `(archivo, línea)` original, **base de toda la trazabilidad**.
    - **Expansor de COPY**: sustituye `COPY X` por el copybook cargado y conserva el origen de cada
-     línea. Si el copybook falta, emite un aviso de mapa parcial.
-   - **Parser**: separa las sentencias por punto y por verbo, y produce `Program { id, sections,
-     paragraphs, data, files, refs, edges, warnings }`. Cada referencia tiene un tipo:
-     `def | read | write | io | perform | call | goto`.
+     línea. Si el copybook falta, emite un aviso de mapa parcial. `COPY X REPLACING` admite
+     pseudotexto `==a b== BY ==c==` (puede abarcar varias líneas), la forma de palabra `A BY B` y
+     `LEADING`/`TRAILING` (reemplazo parcial dentro de un identificador). Se aplica a los tokens
+     del copybook ya expandido y cada token resultante conserva el `Loc` del copybook. El `COPY`
+     recursivo se omite con un aviso `unsupported`.
+   - **Parser**: parte cada archivo en programas (consecutivos con `END PROGRAM x.` y anidados:
+     cada uno es un `Program` con su archivo y su rango de líneas) y separa las sentencias por
+     punto y por verbo. Produce `Program { id, sections, paragraphs, data, files, refs, edges,
+     warnings }`; párrafos, secciones y datos pertenecen al programa que los contiene y un `CALL` a
+     un programa contenido se resuelve. Cada referencia tiene un tipo:
+     `def | read | write | io | perform | call | goto`. La tabla de verbos cubre todos los verbos
+     COBOL: cada uno abre un modo de operandos nuevo (lectura por defecto) y los terminadores
+     `END-*` y las frases `WHEN`, `ELSE`, `NOT`, `AT END`, `INVALID KEY`, `ON SIZE ERROR` lo
+     reinician. Los destinos de escritura incluyen `INSPECT`, `SET`, `SEARCH … VARYING`,
+     `RETURN … INTO`, `DIVIDE … REMAINDER`, `STRING`/`UNSTRING … POINTER|TALLYING`,
+     `CALL … RETURNING` y `ACCEPT`. En un subíndice o una modificación de referencia, el nombre base
+     toma el modo de la sentencia y los identificadores entre paréntesis son lecturas.
 2. **Almacén (SQLite)**: guarda el resultado del parser.
-   - Tablas: `projects`, `files(project, name, content)`, `symbols`, `refs`, `edges`, `warnings`.
+   - Tablas: `projects`, `files(project, name, content)`, `symbols`, `refs`, `edges`, `warnings`, `programs(project, name, file, start_line, end_line)`. El programa de una línea (`program` en `Ref`, `SymbolHit` y `Evidence`) se deduce del rango más interno que la contiene; sin fila en `programs` (proyectos antiguos) se cae a las líneas `PROGRAM-ID` de `symbols`.
    - `lines_fts` es una tabla virtual FTS5 con `(project UNINDEXED, file UNINDEXED, line UNINDEXED, text)`.
      Incluye los comentarios, que a menudo dicen «calcula saldo».
    - El tokenizador `unicode61` parte los nombres por el guion: `WS-SALDO-FINAL` se encuentra
@@ -217,5 +233,5 @@ se versiona; el repo incluye un `.env.example`.
 - Las referencias calificadas (`X OF Y`) y `REDEFINES` se resuelven por nombre; dos datos con el
   mismo nombre en grupos distintos se muestran ambos.
 - `EXEC SQL` / `EXEC CICS`: bloque opaco; solo se extraen las variables host `:VAR` como lecturas.
-- `COPY … REPLACING` y el formato libre no están soportados; aparecen como aviso.
+- El formato libre, `COPY … REPLACING` y varios programas por archivo (consecutivos o anidados) están soportados; un programa anidado se analiza por separado (los nombres `GLOBAL` del padre no son visibles en el hijo). En formato libre los párrafos deben empezar con sangría menor que 4; en `REPLACING` el pseudotexto se compara por palabras completas (no hay el idioma `:TAG:` parcial).
 - Los proyectos se borran al superar `PROJECT_TTL` (7 días por defecto); no hay cuotas por usuario ni límite de peticiones.
