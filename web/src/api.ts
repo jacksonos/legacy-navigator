@@ -1,8 +1,8 @@
 export type Warning = { kind: string; detail: string; file: string; line: number }
-export type FileSummary = { name: string; lines: number; programId: string; paragraphs: number; dataItems: number; warnings: Warning[] }
+export type FileSummary = { name: string; lines: number; programId: string; programIds: string[]; paragraphs: number; dataItems: number; warnings: Warning[] }
 export type Project = { id: string; files: FileSummary[]; warnings: Warning[] }
-export type Ref = { kind: 'read' | 'write' | 'io'; file: string; line: number; paragraph: string }
-export type SymbolHit = { name: string; kind: string; def: { file: string; line: number }; refs: Ref[] }
+export type Ref = { kind: 'read' | 'write' | 'io'; file: string; line: number; paragraph: string; program: string }
+export type SymbolHit = { name: string; kind: string; program: string; def: { file: string; line: number }; refs: Ref[] }
 export type LineHit = { file: string; line: number; text: string }
 export type SearchResult = { results: SymbolHit[]; lines: LineHit[] }
 
@@ -65,7 +65,7 @@ export const getGraph = (id: string, q: GraphQuery = {}) => {
 }
 
 export type Provider = { id: string; model: string }
-export type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; text: string }
+export type Evidence = { file: string; startLine: number; endLine: number; paragraph: string; program: string; text: string }
 export type AskResponse = {
   mode: 'llm' | 'evidence'; provider: string; answer: string
   citations: { file: string; line: number; endLine: number }[]; unverified: string[]; evidence: Evidence[]

@@ -73,7 +73,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
               <li key={f.name}>
                 <button type="button" className="link name" onClick={() => open(f.name)}>{f.name}</button>
                 <div className="muted">
-                  {t('programId')}: {f.programId || '—'} · {count('lines', f.lines)} · {count('paragraphs', f.paragraphs)} · {count('dataItems', f.dataItems)}
+                  {t('programId')}: {f.programIds.join(', ') || '—'} · {count('lines', f.lines)} · {count('paragraphs', f.paragraphs)} · {count('dataItems', f.dataItems)}
                 </div>
                 <Warnings list={f.warnings} />
               </li>
@@ -88,7 +88,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, open }: {
 }
 
 function SearchPanel({ projectId, open, fail, showMap }: {
-  projectId: string | null; open: Open; fail: (e: unknown) => void; showMap: (label: string, file: string) => void
+  projectId: string | null; open: Open; fail: (e: unknown) => void; showMap: (label: string, program: string) => void
 }) {
   const t = useT()
   const [q, setQ] = useState('')
@@ -106,8 +106,8 @@ function SearchPanel({ projectId, open, fail, showMap }: {
     return () => { clearTimeout(h); ctl.abort() }
   }, [projectId, q, kind, fail])
 
-  const mapBtn = (label: string, file: string) => (
-    <button type="button" className="link map-btn" onClick={() => showMap(label, file)}>{t('showInMap')}</button>
+  const mapBtn = (label: string, program: string) => program && (
+    <button type="button" className="link map-btn" onClick={() => showMap(label, program)}>{t('showInMap')}</button>
   )
   const link = (file: string, line: number, extra = '') => (
     <button type="button" className="link" onClick={() => open(file, line)}>
@@ -140,14 +140,14 @@ function SearchPanel({ projectId, open, fail, showMap }: {
             <ul className="hits">
               {results.map((s, i) => (
                 <li key={i}>
-                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span>{(s.kind === 'paragraph' || s.kind === 'section') && mapBtn(s.name, s.def.file)}</div>
+                  <div><strong>{s.name}</strong> <span className="tag">{t('kind.' + s.kind)}</span>{(s.kind === 'paragraph' || s.kind === 'section') && mapBtn(s.name, s.program)}</div>
                   <div>{t('definedAt')} {link(s.def.file, s.def.line)}</div>
                   {REF_KINDS.map((rk) => {
                     const rs: Ref[] = (s.refs ?? []).filter((r) => r.kind === rk)
                     return rs.length > 0 && (
                       <div key={rk} className="refs">
                         <span className={'tag ' + rk}>{t('ref.' + rk)}</span>
-                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph, r.file)}</>}</span>)}
+                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph, r.program)}</>}</span>)}
                       </div>
                     )
                   })}
@@ -261,10 +261,9 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
       .catch(fail)
   }, [project, fail])
 
-  // Show in map: focus view (depth 1) on that paragraph; the program comes from the file it lives in.
-  const showMap = (label: string, file: string) => {
-    const prog = project?.files.find((f) => f.name === file)?.programId
-    setQuery(prog ? { view: 'focus', node: `${prog}:${label}`, depth: 1 } : {})
+  // Show in map: focus view (depth 1) on PROGRAM:PARAGRAPH, with the program the server reports for that line.
+  const showMap = (label: string, program: string) => {
+    setQuery({ view: 'focus', node: `${program}:${label}`, depth: 1 })
     setTab('map')
   }
 

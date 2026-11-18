@@ -33,7 +33,7 @@ function Answer({ text, open }: { text: string; open: Open }) {
 }
 
 export default function AskPanel({ projectId, lang, providers, open, fail, showMap }: {
-  projectId: string | null; lang: Lang; providers: Provider[]; open: Open; fail: (e: unknown) => void; showMap: (l: string, file: string) => void
+  projectId: string | null; lang: Lang; providers: Provider[]; open: Open; fail: (e: unknown) => void; showMap: (l: string, program: string) => void
 }) {
   const t = useT()
   const count = useCount()
@@ -105,7 +105,7 @@ export default function AskPanel({ projectId, lang, providers, open, fail, showM
                       <button type="button" className="link" onClick={() => open(ev.file, ev.startLine)}>
                         {ev.file}:{ev.startLine}-{ev.endLine} ({ev.paragraph})
                       </button>
-                      {ev.paragraph && <button type="button" className="link map-btn" onClick={() => showMap(ev.paragraph, ev.file)}>{t('showInMap')}</button>}
+                      {ev.paragraph && ev.program && <button type="button" className="link map-btn" onClick={() => showMap(ev.paragraph, ev.program)}>{t('showInMap')}</button>}
                       <pre>{ev.text}</pre>
                     </li>
                   ))}
