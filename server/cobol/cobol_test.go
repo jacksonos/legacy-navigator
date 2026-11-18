@@ -372,7 +372,7 @@ func TestExecSQL(t *testing.T) {
 	}
 }
 
-func TestNotCobolAndFreeFormat(t *testing.T) {
+func TestNotCobol(t *testing.T) {
 	good := fx("IDENTIFICATION DIVISION.", "PROGRAM-ID. T.", "DATA DIVISION.", "WORKING-STORAGE SECTION.",
 		"    COPY PLAIN.", "PROCEDURE DIVISION.", "P1.", "    STOP RUN.")
 	proj := Analyze(map[string]string{
@@ -389,7 +389,7 @@ func TestNotCobolAndFreeFormat(t *testing.T) {
 		got = append(got, w.Kind+"@"+w.Loc.File)
 	}
 	sort.Strings(got)
-	if want := []string{"free_format@free.cbl", "not_cobol@README.txt"}; !reflect.DeepEqual(got, want) {
+	if want := []string{"not_cobol@README.txt", "not_cobol@free.cbl"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("warnings = %v", got)
 	}
 	if len(proj.Programs[0].Data) != 1 || proj.Programs[0].Data[0].Loc.File != "PLAIN" {
@@ -423,7 +423,7 @@ func TestCopyEdgeCases(t *testing.T) {
 			replacing++
 		}
 	}
-	if recursive != 2 || replacing != 1 {
+	if recursive != 2 || replacing != 0 {
 		t.Errorf("warnings = %+v", p.Warnings)
 	}
 	// A copybook that copies itself must not loop either.

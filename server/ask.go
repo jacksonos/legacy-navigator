@@ -19,6 +19,7 @@ type Evidence struct {
 	StartLine int    `json:"startLine"`
 	EndLine   int    `json:"endLine"`
 	Paragraph string `json:"paragraph"`
+	Program   string `json:"program"` // PROGRAM-ID containing StartLine
 	Text      string `json:"text"`
 }
 
@@ -106,10 +107,25 @@ func retrieve(db *sql.DB, project, q string, limit int, extra []string) ([]Evide
 	rows.Close()
 	// The parser knows each paragraph's end but the store keeps only its start:
 	// a paragraph runs to the line before the next one, or to the end of the file.
+	// A file may hold several programs: a block never runs past its program's end
+	// nor into a program that starts inside it (contained programs).
+	ix, err := loadProgIndex(db, project)
+	if err != nil {
+		return nil, err
+	}
 	for i := range blocks {
-		blocks[i].end = len(lines[blocks[i].file])
-		if i+1 < len(blocks) && blocks[i+1].file == blocks[i].file {
-			blocks[i].end = blocks[i+1].start - 1
+		b := &blocks[i]
+		b.end = len(lines[b.file])
+		if i+1 < len(blocks) && blocks[i+1].file == b.file {
+			b.end = blocks[i+1].start - 1
+		}
+		if r, ok := ix.rangeAt(b.file, b.start); ok && b.end > r.end {
+			b.end = r.end
+		}
+		for _, r := range ix {
+			if r.file == b.file && r.start > b.start && r.start <= b.end {
+				b.end = r.start - 1
+			}
 		}
 	}
 	blockAt := func(file string, line int) int {
@@ -290,6 +306,7 @@ func retrieve(db *sql.DB, project, q string, limit int, extra []string) ([]Evide
 		out = append(out, Evidence{File: c.file, StartLine: c.start, EndLine: c.end, Paragraph: paraName(c)})
 	}
 	for i := range out {
+		out[i].Program = ix.at(out[i].File, out[i].StartLine)
 		out[i].Text = strings.Join(lines[out[i].File][out[i].StartLine-1:out[i].EndLine], "\n")
 	}
 	return out, nil

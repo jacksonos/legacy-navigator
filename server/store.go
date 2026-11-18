@@ -3,9 +3,9 @@ package main
 import (
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +22,8 @@ CREATE TABLE IF NOT EXISTS refs(project TEXT NOT NULL, name TEXT NOT NULL, kind 
 CREATE INDEX IF NOT EXISTS refs_project ON refs(project, name);
 CREATE TABLE IF NOT EXISTS edges(project TEXT NOT NULL, from_name TEXT NOT NULL, to_name TEXT NOT NULL, kind TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, uncertain INTEGER NOT NULL, dynamic INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS edges_project ON edges(project);
+CREATE TABLE IF NOT EXISTS programs(project TEXT NOT NULL, name TEXT NOT NULL, file TEXT NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS programs_project ON programs(project);
 CREATE TABLE IF NOT EXISTS warnings(project TEXT NOT NULL, kind TEXT NOT NULL, detail TEXT NOT NULL, file TEXT NOT NULL, line INTEGER NOT NULL, program_file TEXT NOT NULL);
 CREATE INDEX IF NOT EXISTS warnings_project ON warnings(project);
 CREATE VIRTUAL TABLE IF NOT EXISTS lines_fts USING fts5(project UNINDEXED, file UNINDEXED, line UNINDEXED, text);
@@ -46,7 +48,74 @@ func openDB(path string) (*sql.DB, error) {
 	return db, nil
 }
 
-var programIDLine = regexp.MustCompile(`(?i)\bPROGRAM-ID\b`)
+// progRange is the line range of one program inside a file; contained programs
+// lie inside their parent's range.
+type progRange struct {
+	name, file string
+	start, end int
+}
+
+// progIndex maps (file, line) to the PROGRAM-ID containing it, so Ref, SymbolHit,
+// Evidence and the graph need no per-row column and no schema migration of old rows.
+type progIndex []progRange
+
+func loadProgIndex(db *sql.DB, id string) (progIndex, error) {
+	var ix progIndex
+	rows, err := db.Query(`SELECT name, file, start_line, end_line FROM programs WHERE project=? ORDER BY file, start_line`, id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var r progRange
+		if err := rows.Scan(&r.name, &r.file, &r.start, &r.end); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		ix = append(ix, r)
+	}
+	rows.Close()
+	if len(ix) > 0 {
+		return ix, nil
+	}
+	// Projects saved before the programs table existed: each program runs to the next one's line.
+	rows, err = db.Query(`SELECT name, file, line FROM symbols WHERE project=? AND kind='program' ORDER BY file, line`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var r progRange
+		if err := rows.Scan(&r.name, &r.file, &r.start); err != nil {
+			return nil, err
+		}
+		r.end = math.MaxInt32
+		if n := len(ix); n > 0 && ix[n-1].file == r.file {
+			ix[n-1].end = r.start - 1
+		}
+		ix = append(ix, r)
+	}
+	return ix, rows.Err()
+}
+
+// rangeAt returns the innermost program range containing the line.
+func (ix progIndex) rangeAt(file string, line int) (progRange, bool) {
+	best := -1
+	for i, r := range ix {
+		if r.file == file && r.start <= line && line <= r.end && (best < 0 || r.start > ix[best].start) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return progRange{}, false
+	}
+	return ix[best], true
+}
+
+// at returns the PROGRAM-ID containing the line ("" in copybooks and unknown files).
+func (ix progIndex) at(file string, line int) string {
+	r, _ := ix.rangeAt(file, line)
+	return r.name
+}
 
 // saveProject stores the sources and everything the parser found, in one transaction.
 func saveProject(db *sql.DB, id string, files map[string]string, proj *cobol.Project) error {
@@ -82,12 +151,8 @@ func saveProject(db *sql.DB, id string, files map[string]string, proj *cobol.Pro
 		warn(w, "")
 	}
 	for _, p := range proj.Programs {
-		for i, l := range splitLines(files[p.File]) {
-			if programIDLine.MatchString(l) {
-				sym(p.ID, "program", p.File, i+1)
-				break
-			}
-		}
+		sym(p.ID, "program", p.File, p.IDLine)
+		exec(`INSERT INTO programs VALUES(?,?,?,?,?)`, id, p.ID, p.File, p.StartLine, p.EndLine)
 		for _, d := range p.Data {
 			sym(d.Name, "data", d.Loc.File, d.Loc.Line)
 		}
@@ -142,7 +207,8 @@ type Warning struct {
 type FileSummary struct {
 	Name       string    `json:"name"`
 	Lines      int       `json:"lines"`
-	ProgramID  string    `json:"programId"`
+	ProgramID  string    `json:"programId"`  // the first program of the file
+	ProgramIDs []string  `json:"programIds"` // all of them, in order
 	Paragraphs int       `json:"paragraphs"`
 	DataItems  int       `json:"dataItems"`
 	Warnings   []Warning `json:"warnings"`
@@ -166,7 +232,7 @@ func loadProject(db *sql.DB, id string) (Project, error) {
 			rows.Close()
 			return out, err
 		}
-		out.Files = append(out.Files, FileSummary{Name: n, Lines: len(splitLines(c)), Warnings: []Warning{}})
+		out.Files = append(out.Files, FileSummary{Name: n, Lines: len(splitLines(c)), ProgramIDs: []string{}, Warnings: []Warning{}})
 	}
 	rows.Close()
 	for i := range out.Files {
@@ -193,21 +259,18 @@ func loadProject(db *sql.DB, id string) (Project, error) {
 		}
 	}
 	rows.Close()
-	rows, err = db.Query(`SELECT file, name FROM symbols WHERE project=? AND kind='program'`, id)
+	ix, err := loadProgIndex(db, id)
 	if err != nil {
 		return out, err
 	}
-	for rows.Next() {
-		var file, name string
-		if err := rows.Scan(&file, &name); err != nil {
-			rows.Close()
-			return out, err
-		}
-		if f := byFile[file]; f != nil {
-			f.ProgramID = name
+	for _, r := range ix {
+		if f := byFile[r.file]; f != nil {
+			if f.ProgramID == "" {
+				f.ProgramID = r.name
+			}
+			f.ProgramIDs = append(f.ProgramIDs, r.name)
 		}
 	}
-	rows.Close()
 	rows, err = db.Query(`SELECT DISTINCT kind, detail, file, line FROM warnings WHERE project=? ORDER BY file, line, kind`, id)
 	if err != nil {
 		return out, err
@@ -241,7 +304,7 @@ func deleteExpired(db *sql.DB, ttl time.Duration) (int, error) {
 	cutoff := fmt.Sprintf("-%d seconds", int64(ttl.Seconds()))
 	expired := `(SELECT id FROM projects WHERE created_at < datetime('now', ?))`
 	var n int
-	for _, t := range []string{"files", "symbols", "refs", "edges", "warnings", "lines_fts"} {
+	for _, t := range []string{"files", "symbols", "refs", "edges", "warnings", "programs", "lines_fts"} {
 		if _, err := tx.Exec(`DELETE FROM `+t+` WHERE project IN `+expired, cutoff); err != nil {
 			return 0, err
 		}

@@ -24,7 +24,7 @@ func TestDeleteExpired(t *testing.T) {
 		}
 		return n
 	}
-	tables := []string{"projects", "files", "symbols", "refs", "edges", "warnings", "lines_fts"}
+	tables := []string{"projects", "files", "symbols", "refs", "edges", "warnings", "programs", "lines_fts"}
 
 	if n, err := deleteExpired(db, 0); err != nil || n != 0 || count("files", old.ID) == 0 {
 		t.Fatalf("ttl 0 must delete nothing: %d %v", n, err)
