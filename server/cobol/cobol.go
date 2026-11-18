@@ -59,6 +59,7 @@ type Ref struct {
 	Kind      string
 	Loc       Loc
 	Paragraph string
+	Detail    string // optional extra, e.g. the OVRDBF target LIB/FILE (CL)
 }
 
 // Edge kinds: perform | goto | call.
@@ -69,10 +70,12 @@ type Edge struct {
 	Loc       Loc
 	Uncertain bool
 	Dynamic   bool
+	Async     bool // SBMJOB: the call runs in another job (CL)
 }
 
 type Program struct {
 	ID         string
+	Language   string // "cl" for CL programs; "" means cobol
 	File       string
 	IDLine     int // line of PROGRAM-ID in File
 	StartLine  int // first line of the program in File (IDENTIFICATION DIVISION)
