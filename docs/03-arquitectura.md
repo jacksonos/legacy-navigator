@@ -8,7 +8,8 @@
 │  carga · búsqueda    │               │  cobol/  normaliza · COPY · parsea       │
 │  visor · grafo       │ ◄──────────── │  SQLite + FTS5  (símbolos, refs, líneas) │
 │  (Mermaid) · i18n    │               │  ask     recupera → LLM → valida citas   │
-└──────────────────────┘               │  llm/    openai | anthropic | gemini     │
+└──────────────────────┘               │  llm/    anthropic | openai | gemini |   │
+                                       │          openrouter                      │
                                        └─────────────────────────────────────────┘
         Un único binario Go sirve la API y el build de web/ (embed) → una imagen Docker
 ```
@@ -22,8 +23,9 @@
 | i18n | Diccionario `en`/`es` propio (un objeto por idioma) | Sin librería; la respuesta del LLM se pide en el idioma de la UI |
 | Back | Go, solo `net/http` | Rutas con método y comodines de `ServeMux` (Go 1.22 o posterior), sin framework |
 | Base de datos | SQLite con `modernc.org/sqlite` | Go puro (sin cgo) y con FTS5 incluido, lo que permite compilar estático para Docker y Windows |
-| LLM | OpenAI, Anthropic y Gemini por HTTP directo | Una interfaz `Provider` con tres implementaciones, sin SDK |
-| Pruebas | `go test` | Parser, validador y recuperador. Sin pruebas unitarias del front en el MVP |
+| LLM | Anthropic, OpenAI, Gemini y OpenRouter por HTTP directo | Una interfaz `Provider` con cuatro proveedores (OpenRouter reutiliza el cliente de OpenAI), sin SDK |
+| Pruebas | `go test` | Parser, almacén, grafo, validador, recuperador y proveedores. Sin pruebas unitarias del front |
+| CI | GitHub Actions | Jobs `server` (gofmt, vet, test), `web` (lint, build) y `docker` (build de la imagen) |
 | Despliegue | Docker (imagen multi-etapa) | Ver «Despliegue» |
 
 ## API
@@ -178,8 +180,9 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
       máx. 3000). Solo se conservan los nombres que existen en el índice, y se suman a los aciertos
       por término como símbolos acertados. Si la llamada falla, se sigue solo con los términos; sin
       proveedor no hay expansión.
-4. **`llm/`**: la interfaz `Provider { Complete(ctx, system, user) (string, error) }` con tres
-   implementaciones: OpenAI, Anthropic y Gemini. Se activa cada proveedor cuya clave esté presente.
+4. **`llm/`**: la interfaz `Provider { Complete(ctx, system, user) (string, error) }` con cuatro
+   proveedores: Anthropic, OpenAI, Gemini y OpenRouter (este último con el cliente de OpenAI). Se activa
+   cada proveedor que tenga clave **y** modelo (`FromEnv`); solo Anthropic tiene un modelo por defecto.
 5. **Validador de citas**: extrae cada `[archivo:línea]` o `[archivo:línea-línea]` y comprueba que
    exista y que caiga dentro de un fragmento enviado. Las citas inválidas pasan a `unverified` y se
    quitan del texto.
@@ -190,8 +193,9 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
 
 | Variable | Uso |
 |---|---|
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | Activan el proveedor correspondiente |
-| `OPENAI_MODEL`, `ANTHROPIC_MODEL`, `GEMINI_MODEL` | Modelo por proveedor. Por defecto `claude-sonnet-5-5` para Anthropic; los de OpenAI y Gemini se fijan en H4 con la documentación vigente |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY` | Activan el proveedor correspondiente (junto con su modelo) |
+| `ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GEMINI_MODEL`, `OPENROUTER_MODEL` | Modelo por proveedor. Por defecto `claude-sonnet-5-5` solo para Anthropic; los otros tres son obligatorios (sin ellos el proveedor se desactiva con un aviso en el log). OpenRouter usa ids con prefijo, p. ej. `openai/gpt-4o` |
+| `ASK_MAX_CHARS` | Máximo de caracteres de código enviados al LLM como evidencia (por defecto 24000) |
 | `DB_PATH` | Ruta del archivo SQLite (por defecto `./data/navigator.db`) |
 | `ADDR` | Dirección de escucha (por defecto `:8080`) |
 | `PROJECT_TTL` | Vida de un proyecto (duración Go, por defecto `168h`; `0` = no borrar). Limpieza al arrancar y cada hora |
@@ -200,9 +204,9 @@ OpenRouter expone la API de chat de OpenAI: se reutiliza el mismo cliente con ba
 
 `Dockerfile` multi-etapa en la raíz:
 
-1. `node:lts-alpine` ejecuta `npm ci && npm run build` en `web/` y produce `web/dist`.
+1. `node:22-alpine` ejecuta `npm ci && npm run build` en `web/` y produce `web/dist`.
 2. `golang` copia `web/dist` en `server/` para `//go:embed` y compila con `CGO_ENABLED=0 go build`.
-3. `gcr.io/distroless/static` recibe solo el binario. Corre como usuario no root, expone el puerto
+3. `gcr.io/distroless/static-debian12:nonroot` recibe solo el binario. Corre como usuario no root, expone el puerto
    8080 y monta un volumen en `/data`, con `DB_PATH=/data/navigator.db`.
 
 ```
@@ -210,8 +214,12 @@ docker build -t legacy-navigator .
 docker run -p 8080:8080 -v navigator-data:/data -e ANTHROPIC_API_KEY=... legacy-navigator
 ```
 
-Además, un `docker-compose.yml` mínimo para levantar todo en local con un `.env`. Este archivo no
+Además, un `docker-compose.yml` mínimo para levantar todo en local con un `.env` opcional. El `.env` no
 se versiona; el repo incluye un `.env.example`.
+
+**Dependencias del front**: `mermaid` está fijado a `11.17.2` y `katex` (dependencia transitiva de Mermaid) se
+fuerza a `^0.18.2` con `overrides` en `web/package.json` para corregir un aviso de seguridad; los `$` de las
+etiquetas del mapa se escapan para que KaTeX no los interprete.
 
 ## Decisiones
 
@@ -221,17 +229,21 @@ se versiona; el repo incluye un `.env.example`.
 | D2 | Parser con regex por sentencia | ANTLR o una gramática COBOL completa | Basta para la estructura y las referencias; lo que no se entiende sale como aviso, nunca se ignora en silencio |
 | D3 | Búsqueda con FTS5 sobre líneas y símbolos | Embeddings o RAG vectorial | El código tiene identificadores exactos; FTS5 es determinista, explicable y no requiere servicios extra |
 | D4 | Citas validadas por código | Confiar en el LLM | La trazabilidad es el punto del proyecto |
-| D5 | HTTP directo a los tres proveedores | SDKs oficiales | Solo hace falta una llamada de texto; tres dependencias menos |
+| D5 | HTTP directo a los cuatro proveedores (OpenRouter con el cliente de OpenAI) | SDKs oficiales | Solo hace falta una llamada de texto; ninguna dependencia por proveedor |
+| D8 | Expansión de la pregunta a símbolos con el LLM, validada contra el índice | Confiar en los nombres que devuelve el LLM | Cierra la brecha de vocabulario («balance» → `WS-SALDO`) sin perder determinismo: solo cuentan los nombres que existen |
+| D9 | Vistas acotadas del grafo (sistema, programa, foco) con tope de 300 aristas | Dibujar el grafo completo | Un grafo de miles de nodos no se lee ni se dibuja; el recorte siempre se declara como mapa parcial |
 | D6 | Un binario con el front embebido | Imágenes separadas para front y back | Una sola imagen, sin CORS ni proxy |
 | D7 | `modernc.org/sqlite` | `mattn/go-sqlite3` | Sin cgo: compila igual en Windows, Linux y Docker distroless |
 
 ## Limitaciones conocidas (se documentan en la UI)
 
-- **Términos de la pregunta**: solo en modo evidencia (sin proveedor), la búsqueda solo encuentra lo
-  que aparece en el código o en sus comentarios. «balance» no encuentra `WS-SALDO`. Con proveedor,
-  la pregunta se asigna antes a nombres de símbolo.
-- Las referencias calificadas (`X OF Y`) y `REDEFINES` se resuelven por nombre; dos datos con el
-  mismo nombre en grupos distintos se muestran ambos.
-- `EXEC SQL` / `EXEC CICS`: bloque opaco; solo se extraen las variables host `:VAR` como lecturas.
-- El formato libre, `COPY … REPLACING` y varios programas por archivo (consecutivos o anidados) están soportados; un programa anidado se analiza por separado (los nombres `GLOBAL` del padre no son visibles en el hijo). En formato libre los párrafos deben empezar con sangría menor que 4; en `REPLACING` el pseudotexto se compara por palabras completas (no hay el idioma `:TAG:` parcial).
-- Los proyectos se borran al superar `PROJECT_TTL` (7 días por defecto); no hay cuotas por usuario ni límite de peticiones.
+Son las mismas ocho que muestra el botón «Limitaciones» (`limit.1` a `limit.8` en `web/src/i18n.ts`):
+
+1. Se admiten el formato libre y `COPY … REPLACING`; en formato libre, los párrafos deben empezar con sangría menor que 4. En `REPLACING` el pseudotexto se compara por palabras completas (no hay el idioma `:TAG:` parcial).
+2. En modo solo evidencia (sin proveedor), los términos de la pregunta deben aparecer en el código o sus comentarios (p. ej. «balance» no encuentra `WS-SALDO`); con proveedor, la pregunta se asigna antes a símbolos.
+3. Los nombres calificados (`X OF Y`) y `REDEFINES` se resuelven solo por nombre; dos datos con el mismo nombre en grupos distintos se muestran ambos.
+4. Los bloques `EXEC SQL` / `EXEC CICS` son opacos: solo se extraen las variables host.
+5. Los programas anidados se analizan por separado: los nombres `GLOBAL` del programa padre no son visibles en el hijo.
+6. El mapa es parcial cuando no se pueden resolver llamadas o copybooks (y cuando una vista se recorta por el tope de aristas).
+7. Solo los fragmentos de código seleccionados se envían al proveedor de IA.
+8. Los proyectos se borran automáticamente a los 7 días (configurable con `PROJECT_TTL`). No hay cuotas por usuario ni límite de peticiones.
