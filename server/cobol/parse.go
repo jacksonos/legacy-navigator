@@ -283,28 +283,52 @@ func (ps *parser) dataDivision(toks []Token) {
 	}
 }
 
-// Statement verbs and the mode their operands start in.
+// Every COBOL verb: each one starts a fresh statement, so operands start in
+// the verb's mode (verbMode, read by default) instead of inheriting the previous one.
+var verbs = func() map[string]bool {
+	m := map[string]bool{}
+	for _, v := range strings.Fields(`ACCEPT ADD ALTER CALL CANCEL CLOSE COMPUTE CONTINUE DELETE DISPLAY DIVIDE
+		ENTRY EVALUATE EXIT GENERATE GO GOBACK IF INITIALIZE INITIATE INSPECT INVOKE MERGE MOVE MULTIPLY OPEN
+		PERFORM READ RELEASE RETURN REWRITE SEARCH SET SORT START STOP STRING SUBTRACT SUPPRESS TERMINATE
+		UNSTRING USE WRITE`) {
+		m[v] = true
+	}
+	return m
+}()
+
+// Verbs whose first operands are not read.
 var verbMode = map[string]string{
-	"MOVE": "read", "COMPUTE": "write", "ADD": "read", "SUBTRACT": "read",
-	"MULTIPLY": "read", "DIVIDE": "read", "READ": "io", "WRITE": "io",
-	"REWRITE": "io", "DELETE": "io", "START": "io", "OPEN": "io", "CLOSE": "io",
-	"ACCEPT": "write", "INITIALIZE": "write", "SET": "write", "STRING": "read",
-	"UNSTRING": "read", "PERFORM": "read", "GO": "read", "CALL": "read",
-	"ALTER": "read",
+	"COMPUTE": "write", "READ": "io", "WRITE": "io", "REWRITE": "io", "DELETE": "io",
+	"START": "io", "OPEN": "io", "CLOSE": "io", "ACCEPT": "write", "INITIALIZE": "write", "SET": "write",
 }
 
-// Words that end the operand list of a statement (back to read mode).
-var resetWord = map[string]bool{
-	"IF": true, "ELSE": true, "WHEN": true, "EVALUATE": true, "DISPLAY": true,
-	"STOP": true, "GOBACK": true, "EXIT": true, "CONTINUE": true, "INSPECT": true,
-	"SEARCH": true, "ON": true, "AT": true, "INVALID": true, "NOT": true,
-	"UNTIL": true, "VARYING": true, "THEN": true, "RETURN": true, "SORT": true,
-	"MERGE": true, "CANCEL": true, "RELEASE": true,
+// Phrase words inside a statement: back to read mode, no verb.
+var phrase = map[string]bool{
+	"ELSE": true, "WHEN": true, "ON": true, "AT": true, "INVALID": true, "NOT": true,
+	"UNTIL": true, "VARYING": true, "THEN": true,
 }
+
+func isScopeEnd(w string) bool { return strings.HasPrefix(w, "END-") }
 
 func endsStatement(w string) bool {
-	_, v := verbMode[w]
-	return w == "." || v || resetWord[w] || strings.HasPrefix(w, "END-")
+	return w == "." || verbs[w] || phrase[w] || isScopeEnd(w)
+}
+
+// startMode is the mode of a verb's first operands; INSPECT x writes x only
+// when the statement has REPLACING or CONVERTING.
+func startMode(verb string, body []Token, i int) string {
+	if verb == "INSPECT" {
+		for j := i + 1; j < len(body) && !endsStatement(body[j].Text); j++ {
+			if w := body[j].Text; w == "REPLACING" || w == "CONVERTING" {
+				return "write"
+			}
+		}
+		return "read"
+	}
+	if m, ok := verbMode[verb]; ok {
+		return m
+	}
+	return "read"
 }
 
 // givingAhead reports whether the current statement has a GIVING clause.
@@ -344,12 +368,40 @@ func trigger(verb, w string, body []Token, i int) string {
 			return tgt()
 		case verb == "DIVIDE" && w == "BY":
 			return "read"
+		case verb == "DIVIDE" && w == "REMAINDER":
+			return "write"
 		}
 	case "READ":
 		switch w {
 		case "INTO":
 			return "write"
 		case "KEY":
+			return "read"
+		}
+	case "RETURN":
+		if w == "INTO" {
+			return "write"
+		}
+	case "ACCEPT":
+		if w == "FROM" {
+			return "read"
+		}
+	case "CALL":
+		switch w {
+		case "RETURNING", "GIVING":
+			return "write"
+		case "USING", "BY":
+			return "read"
+		}
+	case "SEARCH":
+		if w == "VARYING" {
+			return "write"
+		}
+	case "INSPECT":
+		switch w {
+		case "TALLYING":
+			return "write"
+		case "FOR", "REPLACING", "CONVERTING", "TO", "BY", "BEFORE", "AFTER":
 			return "read"
 		}
 	case "WRITE", "REWRITE":
@@ -368,10 +420,14 @@ func trigger(verb, w string, body []Token, i int) string {
 		}
 	case "STRING", "UNSTRING":
 		switch w {
-		case "INTO":
+		case "INTO", "POINTER":
 			return "write"
-		case "WITH", "POINTER", "DELIMITER", "COUNT", "TALLYING":
+		case "WITH":
 			return "read"
+		case "DELIMITER", "COUNT", "TALLYING": // UNSTRING receiving phrases
+			if verb == "UNSTRING" {
+				return "write"
+			}
 		}
 	}
 	return ""
@@ -396,7 +452,7 @@ func (ps *parser) procedure(proc []Token) {
 	}
 	starts := map[int]start{}
 	for i, t := range body {
-		if (i != 0 && body[i-1].Text != ".") || t.Col < 8 || t.Col > 11 || i+1 >= len(body) {
+		if (i != 0 && body[i-1].Text != ".") || t.Col < 8 || t.Col > 11 || i+1 >= len(body) || verbs[t.Text] {
 			continue
 		}
 		if body[i+1].Text == "." {
@@ -447,19 +503,17 @@ func (ps *parser) procedure(proc []Token) {
 	}
 
 	// Statements.
-	cur, verb, mode := ps.p.ID, "", "read"
+	cur, verb, mode, depth := ps.p.ID, "", "read", 0 // depth: open parentheses (subscripts, ref-mod)
 	for i := 0; i < len(body); i++ {
 		t, w := body[i], body[i].Text
 		if s, ok := starts[i]; ok {
-			cur, verb, mode = s.name, "", "read"
+			cur, verb, mode, depth = s.name, "", "read", 0
 			i += s.width - 1
 			continue
 		}
 		switch {
-		case w == "END" && i+1 < len(body) && body[i+1].Text == "PROGRAM":
-			return
 		case w == ".":
-			verb, mode = "", "read"
+			verb, mode, depth = "", "read", 0
 			continue
 		case w == "EXEC":
 			for i++; i < len(body) && body[i].Text != "END-EXEC"; i++ {
@@ -470,42 +524,72 @@ func (ps *parser) procedure(proc []Token) {
 			verb, mode = "", "read"
 			continue
 		}
-		if m, ok := verbMode[w]; ok {
-			verb, mode = w, m
-			i = ps.flow(body, i, cur, paraNames)
-			continue
+		if depth == 0 {
+			switch {
+			case verbs[w]: // every verb starts a fresh operand mode
+				verb, mode = w, startMode(w, body, i)
+				i = ps.flow(body, i, cur, paraNames)
+				continue
+			case phrase[w] || isScopeEnd(w):
+				if m := trigger(verb, w, body, i); m != "" { // e.g. SEARCH ... VARYING idx
+					mode = m
+				} else {
+					verb, mode = "", "read"
+				}
+				continue
+			}
+			if m := trigger(verb, w, body, i); m != "" {
+				mode = m
+				continue
+			}
 		}
-		if resetWord[w] || strings.HasPrefix(w, "END-") {
-			verb, mode = "", "read"
-			continue
-		}
-		if m := trigger(verb, w, body, i); m != "" {
-			mode = m
-			continue
-		}
-		ps.refs([]Token{t}, cur, mode)
+		ps.ref(t, cur, mode, &depth)
 	}
 }
 
 // refs emits a Ref for every known name inside the tokens.
 func (ps *parser) refs(toks []Token, para, mode string) {
+	depth := 0
 	for _, t := range toks {
-		if t.Text == "" || t.Text[0] == '\'' || t.Text[0] == '"' {
-			continue
+		ps.ref(t, para, mode, &depth)
+	}
+}
+
+// ref emits a Ref for every known name inside t: the base name gets mode, every
+// name inside ( ... ) (subscripts, reference modification) is only read.
+func (ps *parser) ref(t Token, para, mode string, depth *int) {
+	if t.Text == "" || t.Text[0] == '\'' || t.Text[0] == '"' {
+		return
+	}
+	name := ""
+	flush := func() {
+		c := name
+		name = ""
+		if !ps.known[c] {
+			return
 		}
-		parts := strings.FieldsFunc(t.Text, func(r rune) bool { return r == '(' || r == ')' || r == ':' })
-		for k, c := range parts {
-			if !ps.known[c] {
-				continue
-			}
-			m := mode
-			if k > 0 {
-				m = "read" // subscripts and ref-mod operands are only read
-			}
-			ps.p.Refs = append(ps.p.Refs, Ref{c, m, t.Loc, para})
-			if f, ok := ps.recFile[c]; ok && m == "io" {
-				ps.p.Refs = append(ps.p.Refs, Ref{f, "io", t.Loc, para})
-			}
+		m := mode
+		if *depth > 0 {
+			m = "read"
+		}
+		ps.p.Refs = append(ps.p.Refs, Ref{c, m, t.Loc, para})
+		if f, ok := ps.recFile[c]; ok && m == "io" {
+			ps.p.Refs = append(ps.p.Refs, Ref{f, "io", t.Loc, para})
 		}
 	}
+	for _, r := range t.Text {
+		switch r {
+		case '(':
+			flush()
+			*depth++
+		case ')':
+			flush()
+			*depth = max(0, *depth-1)
+		case ':':
+			flush()
+		default:
+			name += string(r)
+		}
+	}
+	flush()
 }
