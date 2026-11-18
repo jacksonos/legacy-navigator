@@ -95,3 +95,4 @@ input[type=search], select { padding: .3rem .4rem; background: var(--panel); col
 .warn-box { border: 2px solid var(--w); border-radius: 4px; padding: .3rem .5rem; color: var(--w); font-size: .85rem; }
 .evidence summary { cursor: pointer; font-weight: 600; }
 .evidence pre { margin: .2rem 0; padding: .3rem; font: 12px/1.4 ui-monospace, Consolas, monospace; background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; overflow: auto; max-width: 100%; }
+.swatch-cl { display: inline-block; width: .8em; height: .8em; background: #0f766e; border-radius: 2px; vertical-align: -1px; }

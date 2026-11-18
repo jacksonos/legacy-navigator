@@ -54,7 +54,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, onLargeDemo, open }: {
         <label className="btn">
           {t('chooseFiles')}
           <input
-            type="file" multiple accept=".cbl,.cob,.cpy,.txt"
+            type="file" multiple accept=".cbl,.cob,.cpy,.txt,.clp,.clle,.cl"
             onChange={(e) => { if (e.target.files?.length) onUpload([...e.target.files]); e.target.value = '' }}
           />
         </label>
@@ -75,7 +75,7 @@ function FilesPanel({ project, busy, onUpload, onSamples, onLargeDemo, open }: {
               <li key={f.name}>
                 <button type="button" className="link name" onClick={() => open(f.name)}>{f.name}</button>
                 <div className="muted">
-                  {t('programId')}: {f.programIds.join(', ') || '—'} · {count('lines', f.lines)} · {count('paragraphs', f.paragraphs)} · {count('dataItems', f.dataItems)}
+                  {f.language === 'cl' ? `${t('langCl')} · ${t('programIdCl')}` : t('programId')}: {f.programIds.join(', ') || '—'} · {count('lines', f.lines)} · {count('paragraphs', f.paragraphs)} · {count('dataItems', f.dataItems)}
                 </div>
                 <Warnings list={f.warnings} />
               </li>
@@ -149,7 +149,7 @@ function SearchPanel({ projectId, open, fail, showMap }: {
                     return rs.length > 0 && (
                       <div key={rk} className="refs">
                         <span className={'tag ' + rk}>{t('ref.' + rk)}</span>
-                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, r.paragraph)}{r.paragraph && <> {mapBtn(r.paragraph, r.program)}</>}</span>)}
+                        {rs.map((r, j) => <span key={j}>{link(r.file, r.line, [r.paragraph, r.detail].filter(Boolean).join(' · '))}{r.paragraph && <> {mapBtn(r.paragraph, r.program)}</>}</span>)}
                       </div>
                     )
                   })}
@@ -184,7 +184,7 @@ function Limits() {
       <button type="button" className="btn" onClick={() => ref.current?.showModal()}>{t('limitations')}</button>
       <dialog ref={ref} aria-labelledby="h-limits" className="limits">
         <h2 id="h-limits">{t('limitsTitle')}</h2>
-        <ul>{[1, 2, 3, 4, 5, 6, 7, 8].map((n) => <li key={n}>{t('limit.' + n)}</li>)}</ul>
+        <ul>{[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => <li key={n}>{t('limit.' + n)}</li>)}</ul>
         <button type="button" className="btn" autoFocus onClick={() => ref.current?.close()}>{t('close')}</button>
       </dialog>
     </>
@@ -265,7 +265,7 @@ function Shell({ lang, setLang }: { lang: Lang; setLang: (l: Lang) => void }) {
 
   // Show in map: focus view (depth 1) on PROGRAM:PARAGRAPH, with the program the server reports for that line.
   const showMap = (label: string, program: string) => {
-    setQuery({ view: 'focus', node: `${program}:${label}`, depth: 1 })
+    setQuery({ view: 'focus', node: label === program ? program : `${program}:${label}`, depth: 1 })
     setTab('map')
   }
 

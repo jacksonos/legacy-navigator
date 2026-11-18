@@ -14,9 +14,10 @@ const en = {
   'limit.6': 'The map is partial when calls or copybooks cannot be resolved.',
   'limit.7': 'Only the selected code snippets are sent to the AI provider.',
   'limit.8': 'Projects are deleted automatically after 7 days (configurable with PROJECT_TTL).',
+  'limit.9': 'CL (IBM i): commands are read as text, not executed. User-defined commands (*CMD), CALLPRC procedures and the fields of DCLF files (DDS) are not followed.',
   files: 'Files',
   dropHint: 'Drop COBOL files here or choose them',
-  accepted: 'Accepted: .cbl, .cob, .cpy, .txt (max 1 MB per file, 10 MB per project)',
+  accepted: 'Accepted: .cbl, .cob, .cpy, .txt, .clp, .clle, .cl (max 1 MB per file, 10 MB per project)',
   chooseFiles: 'Choose files',
   useSamples: 'Use samples',
   useLargeDemo: 'Large demo',
@@ -108,6 +109,9 @@ const en = {
   'legend.call': 'CALL',
   'legend.uncertain': 'Uncertain (?)',
   'legend.unresolved': 'Unresolved (not loaded / dynamic)',
+  'legend.clprogram': 'CL program',
+  langCl: 'CL',
+  programIdCl: 'PGM',
 } as const
 
 export type Key = keyof typeof en
@@ -127,9 +131,10 @@ const es: Record<Key, string> = {
   'limit.6': 'El mapa es parcial cuando no se pueden resolver llamadas o copybooks.',
   'limit.7': 'Solo los fragmentos de código seleccionados se envían al proveedor de IA.',
   'limit.8': 'Los proyectos se borran automáticamente a los 7 días (configurable con PROJECT_TTL).',
+  'limit.9': 'CL (IBM i): los comandos se leen como texto, no se ejecutan. No se siguen los comandos propios (*CMD), los procedimientos de CALLPRC ni los campos de los archivos de DCLF (DDS).',
   files: 'Archivos',
   dropHint: 'Suelta aquí archivos COBOL o elígelos',
-  accepted: 'Admitidos: .cbl, .cob, .cpy, .txt (máx. 1 MB por archivo, 10 MB por proyecto)',
+  accepted: 'Admitidos: .cbl, .cob, .cpy, .txt, .clp, .clle, .cl (máx. 1 MB por archivo, 10 MB por proyecto)',
   chooseFiles: 'Elegir archivos',
   useSamples: 'Usar ejemplos',
   useLargeDemo: 'Demo grande',
@@ -221,6 +226,9 @@ const es: Record<Key, string> = {
   'legend.call': 'CALL',
   'legend.uncertain': 'Incierta (?)',
   'legend.unresolved': 'Sin resolver (no cargado / dinámico)',
+  'legend.clprogram': 'Programa CL',
+  langCl: 'CL',
+  programIdCl: 'PGM',
 }
 
 export const dict: Record<Lang, Record<Key, string>> = { en, es }
