@@ -17,7 +17,7 @@
        DATA DIVISION.
        FILE SECTION.
        FD  AUDITORIA.
-       01  AUD-LINEA               PIC X(100).
+       01  AUD-LINEA               PIC X(110).
        WORKING-STORAGE SECTION.
        01  WS-FS-AUD               PIC XX.
            88  AUD-FS-OK           VALUE '00'.
@@ -39,7 +39,7 @@
            05  FILLER              PIC X VALUE SPACE.
            05  SAL-HORA            PIC 9(6).
            05  FILLER              PIC X VALUE SPACE.
-           05  SAL-PROGRAMA        PIC X(8).
+           05  SAL-PROGRAMA        PIC X(10).
            05  FILLER              PIC X VALUE SPACE.
            05  SAL-ACCION          PIC X(10).
            05  FILLER              PIC X VALUE SPACE.

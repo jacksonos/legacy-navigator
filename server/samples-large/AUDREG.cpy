@@ -3,7 +3,7 @@
       * TODA RUTINA DEL BATCH REGISTRA SUS HITOS CON ESTE REGISTRO
       *================================================================
        01  AUD-REGISTRO.
-           05  AUD-PROGRAMA        PIC X(8).
+           05  AUD-PROGRAMA        PIC X(10).
            05  AUD-ACCION          PIC X(10).
            05  AUD-FECHA           PIC 9(8).
            05  AUD-HORA            PIC 9(6).

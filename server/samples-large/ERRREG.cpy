@@ -2,7 +2,7 @@
       * ERRREG - AREA DE ERROR QUE SE PASA A LA RUTINA ERRORES
       *================================================================
        01  ERR-AREA.
-           05  ERR-PROGRAMA        PIC X(8).
+           05  ERR-PROGRAMA        PIC X(10).
            05  ERR-CODIGO          PIC 9(4).
            05  ERR-TEXTO           PIC X(40).
            05  ERR-SEVERIDAD       PIC 9.
